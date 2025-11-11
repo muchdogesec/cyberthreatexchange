@@ -20,6 +20,73 @@ Our need for something more custom stems from two main requirements:
  
 ## Endpoints
 
+### Feeds
+
+#### `POST /feed`
+
+This will create a feed. Feeds have their own ArangoDB vertex/edge collection pair.
+
+To create a feed user must pass
+
+* name
+* description
+* tags
+* identity_id
+
+Feed will also have autogenerate
+
+uuid
+created
+modified
+
+#### `PATCH /feed`
+
+User can edit the following feed properties
+
+* name
+* description
+* tags
+
+On PATCH will update modified time
+
+#### POST `/feed/<ID>/bundle`
+
+Allows user to post a STIX bundle of objects to their feed.
+
+We do not validate STIX objects -- just ensure they pass 
+
+
+##### A note on bundle upload behaviour
+
+* will store bundle id against notes of each object, note, this could be more than one bundle when object id updated more than one time
+* Ideally we would break bundle up into objects... if one object failed, the rest of the bundle would still process and we could show user exactly what item failed
+* this will be considered as one job, if one or more objects in upload fail the job will continue. All successes and errors will be reported in the job individually so it is clear what objects failed (and why), and which uploaded successfully.
+
+#### PATCH /feed/<ID>/objects/<ID>
+
+Allows user to update an object in their feed.
+
+
+##### A note on PATCH behaviour (for SDO/SRO types)
+
+* user cannot modify `id`, `type`, `created`, `modified`, `created_by_ref` or `spec_version`
+* For SDO and SRO objects on all successful modifications the `modified` time will be automatically update to match the execution time of the change
+
+##### A note on PATCH behaviour (for SCO types)
+
+* user cannot modify `id`, `type`, `_created_by_ref`
+
+
+### Jobs
+
+All POST and PATCH request will be tracked as jobs to highlight any errors on insert to db.
+
+We will expose `job/` and `job/<ID>` to allow user to get info of their requests,
+
+--- 
+
+TODO BELOW THIS POINT
+
 ### Global search
 
 * GET `search/`
@@ -46,45 +113,14 @@ For each object type there will be the following available endpoints:
 	* allows a user to add a new object
 * PATCH `<STIX TYPE>/<OBJECT TYPE>/<ID>`
 
-### Mass Upload
 
-* POST `bundle/`
 
-#### A note on POST behaviour (for SDO/SRO/SCO types)
 
-* all objects will be validated against the core schema, and all registered property extensions for the object type
-	* if they do not conform (i.e. required values missing or incorrect properties/value types passed), the API will return 400 responses immediatley
-	* we lookup custom properties only if an extension defintion passed. The ED must be registered on the current main release of stix2extensions
-* user can pass any `created` and `modified` time
-* user can pass any `id` value
-	* if `id` conflicts return 403. Stating this object exists and should use PATCH
-* allow user to pass hidden properties (we should define the list of hidden properties needed)
 
-#### A note on POST behaviour (for SCO types)
 
-* we should allow user to pass a hidden `_created_by_ref` property that can be used to control ownership
 
-#### A note on PATCH behaviour (for SDO/SRO types)
 
-* user cannot modify `id`, `type`, `created`, `modified`, `created_by_ref` or `spec_version`
-* For SDO and SRO objects on all successful modifications the `modified` time will be automatically update to match the execution time of the change
 
-#### A note on PATCH behaviour (for SCO types)
-
-* user cannot modify `id`, `type`, `_created_by_ref`
-* we should allow user to pass `_created_by_ref` in each request (optionally to validate ownership, and stop request if owner does not match `_created_by_ref` -- this is mainly to control edits of SCOs in web)
-
-#### A note on bundle upload behaviour
-
-* will store bundle id against notes of each object, note, this could be more than one bundle when object id updated more than one time
-* for bundle upload, all objects will be first parsed out, they will then one by one be added using the appropriate POST object endpoints
-* this will be considered as one job, if one or more objects in upload fail the job will continue. All successes and errors will be reported in the job individually so it is clear what objects failed (and why), and which uploaded successfully.
-
-### Jobs
-
-All POST and PATCH request will be tracked as jobs to highlight any errors on insert to db.
-
-We will expose `job/` and `job/<ID>` to allow user to get info of their requests,
 
 ## Support
 
