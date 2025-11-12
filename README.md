@@ -1,4 +1,4 @@
-# stix2api
+# cyberthreatexchange
 
 ## Overview
 
@@ -9,7 +9,7 @@ Our ambition is to create a Cyber Threat Exchange that allows;
 
 In order to that, we need a flexible, but structured way for producers to submit their intel and for users to explore it.
 
-stix2api is the core API that will support this.
+This is the core API that will support this.
 
 ## Why not just use the stix2 Python library
 
@@ -28,24 +28,24 @@ This will create a feed. Feeds have their own ArangoDB vertex/edge collection pa
 
 To create a feed user must pass
 
-* name
-* description
-* tags
-* identity_id
+* `name`
+* `description`
+* `tags`
+* `identity_id`
 
 Feed will also have autogenerate
 
-uuid
-created
-modified
+* `uuid`
+* `created`
+* `modified`
 
 #### `PATCH /feed`
 
 User can edit the following feed properties
 
-* name
-* description
-* tags
+* `name`
+* `description`
+* `tags`
 
 On PATCH will update modified time
 
@@ -55,17 +55,15 @@ Allows user to post a STIX bundle of objects to their feed.
 
 We do not validate STIX objects -- just ensure they pass 
 
-
 ##### A note on bundle upload behaviour
 
 * will store bundle id against notes of each object, note, this could be more than one bundle when object id updated more than one time
 * Ideally we would break bundle up into objects... if one object failed, the rest of the bundle would still process and we could show user exactly what item failed
 * this will be considered as one job, if one or more objects in upload fail the job will continue. All successes and errors will be reported in the job individually so it is clear what objects failed (and why), and which uploaded successfully.
 
-#### PATCH /feed/<ID>/objects/<ID>
+#### PATCH `/feed/<ID>/objects/<ID>`
 
 Allows user to update an object in their feed.
-
 
 ##### A note on PATCH behaviour (for SDO/SRO types)
 
@@ -76,6 +74,32 @@ Allows user to update an object in their feed.
 
 * user cannot modify `id`, `type`, `_created_by_ref`
 
+#### DELETE `/feed/<ID>/objects/<ID>`
+
+Allows user to update an object in their feed.
+
+Will only, object all versions, all SROs (inc embedded ref SROs) pointing to / from the objects.
+
+#### GET `/feed/<ID>/objects/`
+
+Allows user to filter on all objects in the bundle with lots of filtering options. Due to the fact SCOs and SDOs will be combined we need to find a creative way to filter.
+
+#### GET `/feed/<ID>/objects/<ID>`
+
+
+#### GET `/feed/<ID>/objects/<ID>/versions`
+
+#### GET `/feed/<ID>/objects/<ID>/bundle`
+
+Get all directly related objects
+
+### Identities
+
+Identities are the owners of feeds
+
+#### GET `/identity/`
+
+#### GET `/identity/<ID>/`
 
 ### Jobs
 
