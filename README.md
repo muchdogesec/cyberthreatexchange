@@ -97,6 +97,13 @@ Get all directly related objects
 
 Identities are the owners of feeds
 
+#### POST `/identity/`
+
+This allows a user to upload a STIX identity object 
+
+#### PATCH `/identity/`
+
+
 #### GET `/identity/`
 
 #### GET `/identity/<ID>/`
