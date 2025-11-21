@@ -323,7 +323,7 @@ class FeedView(viewsets.ModelViewSet):
     destroy=extend_schema(
         summary="Delete an object from a feed",
         description="Allows a user to delete an object and its relationships from a feed. This is an asynchronous operation.",
-        responses={202: serializers.JobSerializer},
+        responses={204: None},
     ),
     versions=extend_schema(
         summary="Get object versions from a feed",

@@ -8,7 +8,7 @@ from django.utils import timezone
 
 from django.dispatch import receiver
 from dogesec_commons.objects.helpers import ArangoDBHelper
-from django.db.models.signals import post_save
+from django.db.models.signals import post_save, post_delete
 from django.contrib.postgres.fields import ArrayField
 import stix2
 from stix2arango.stix2arango import Stix2Arango
@@ -138,6 +138,17 @@ def update_identities(feed: Feed):
         logging.info(f"updated {len(updated_keys)} identities for {feed.id}")
     except Exception as e:
         logging.exception("could not update identities")
+
+
+@receiver(post_delete, sender=Feed)
+def delete_collections(sender, instance: Feed, **kwargs):
+    db = ArangoDBHelper(instance.collection_name, None).db
+    try:
+        graph = db.graph(db.name.split('_database')[0]+'_graph')
+        graph.delete_edge_definition(instance.collection_name+'_edge_collection', purge=True)
+        graph.delete_vertex_collection(instance.collection_name+'_vertex_collection', purge=True)
+    except BaseException as e:
+        logging.error(f"cannot delete collection `{instance.collection_name}`: {e}") 
 
 
 class JobTypes(models.TextChoices):

@@ -530,3 +530,27 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
             collection_name, _, _ = obj.pop("_id").partition("/")
             feed_uuid = collection_name.split('_')[1]
             obj["x_ctx_feed_id  "] = str(uuid.UUID(feed_uuid))
+
+
+    def remove_object(self, feed_id, obj_id: str):
+        feed = models.Feed.objects.get(id=feed_id)
+        query = """
+        LET FIRST = (
+        FOR doc IN @@collection
+        FILTER doc.id == @obj_id
+        REMOVE doc IN @@collection
+        RETURN doc._key
+        )
+
+        LET SECOND = (
+        FOR doc IN @@edge_collection
+        FILTER doc.source_ref == @obj_id OR doc.target_ref == @obj_id
+        REMOVE doc IN @@edge_collection
+        RETURN doc._key
+        )
+        FOR key IN UNION(FIRST, SECOND)
+        RETURN key
+        """
+        bind_vars = {"@collection": feed.vertex_collection, "@edge_collection": feed.edge_collection, "obj_id": obj_id}
+        self.db.aql.execute(query, bind_vars=bind_vars, paginate=False)
+        return True
