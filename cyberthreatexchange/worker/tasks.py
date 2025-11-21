@@ -1,22 +1,16 @@
 import logging
 from pathlib import Path
 import shutil
-from urllib.parse import urljoin
 
-import requests
 from cyberthreatexchange.server.models import Job
 from cyberthreatexchange.server import models
 from celery import Task
 import tempfile
-from datetime import datetime, date, timedelta
 import typing
 from django.utils import timezone
 from django.conf import settings
 from .celery import app
 from stix2arango.stix2arango import Stix2Arango
-
-from arango_cti_processor.managers import TechniqueTactic
-from arango_cti_processor.__main__ import run_all as run_task_with_acp
 import logging
 
 if typing.TYPE_CHECKING:
