@@ -2,11 +2,11 @@ import json
 import stix2
 
 from cyberthreatexchange.server.arango_helpers import ArangoDBHelper
-from .models import Feed, Identity, Job
+from .models import Feed, Identity, Job, ObjectValue
 from rest_framework import serializers, validators
 from dogesec_commons.utils.serializers import JSONSchemaSerializer
 
-from .models import Feed, Identity, Job
+from .models import Feed, Identity, Job, ObjectValue
 from rest_framework import serializers, validators
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework.fields import get_error_detail
@@ -15,27 +15,6 @@ from rest_framework.fields import get_error_detail
 class StixObjectsPlaceholderSerializer(serializers.Serializer):
     type = serializers.CharField()
     id = serializers.CharField()
-
-
-
-class FeedCreateSerializer(serializers.ModelSerializer):
-
-    identity_id = serializers.PrimaryKeyRelatedField(
-        queryset=Identity.objects.all(),
-        source="identity",
-        help_text="The UUID of the Identity object to associate with this feed.",
-    )
-
-    class Meta:
-        model = Feed
-        fields = ["name", "description", "tags", "identity_id"]
-
-
-class FeedUpdateSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Feed
-        fields = ["name", "description", "tags"]
-
 
 class WarningSerializer(serializers.Serializer):
     type = serializers.CharField()
@@ -58,6 +37,27 @@ class JobDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Job
         exclude = ["feed"]
+
+
+class ObjectValueSerializer(serializers.ModelSerializer):
+    """Serializer for ObjectValue search results."""
+    feed_id = serializers.UUIDField(source='feed.id', read_only=True)
+    
+    class Meta:
+        model = ObjectValue
+        fields = [
+            'id',
+            'feed_id',
+            'stix_id',
+            'stix_type',
+            'modified',
+            'value',
+            'value_type',
+            'is_ref',
+            'ref_stix_id',
+            'created_at',
+        ]
+        read_only_fields = fields
 
 
 class StixVersionsSerializer(serializers.Serializer):
@@ -83,17 +83,7 @@ class FeedSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Feed
-        fields = [
-            "id",
-            "name",
-            "description",
-            "tags",
-            "identity",
-            "identity_id",
-            "created_at",
-            "updated_at",
-            "last_run",
-        ]
+        exclude = ["collection_name"]
         read_only_fields = ["id", "created_at", "updated_at", "last_run"]
 
     def __init__(self, *args, **kwargs):

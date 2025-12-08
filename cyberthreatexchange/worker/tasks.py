@@ -42,6 +42,8 @@ class CustomTask(Task):
 
 @app.task(base=CustomTask)
 def upload_bundle_task(job_id=None, warnings=None):
+    from cyberthreatexchange.server.values import save_object_values
+    
     job = Job.objects.get(pk=job_id)
     feed = job.feed
     s2a = Stix2Arango(
@@ -55,9 +57,25 @@ def upload_bundle_task(job_id=None, warnings=None):
         create_collection=False,
     )
     bundle = job.payload.copy()
+    objects_to_process = bundle.get('objects', [])
+    
     if warnings:
-        bundle['objects'] = [obj.copy() for i, obj in enumerate(bundle['objects']) if i not in warnings]
-    s2a.run(data=bundle)
+        objects_to_process = [obj.copy() for i, obj in enumerate(objects_to_process) if i not in warnings]
+    
+    # Upload bundle to ArangoDB
+    s2a.run(data=dict(
+        type="bundle",
+        id=bundle.get('id', f"bundle--{job.id}"),
+        objects=objects_to_process
+    ))
+    
+    # Extract and save all object values to ObjectValue model
+    try:
+        created_count, deleted_count = save_object_values(objects_to_process, feed, str(feed.id))
+        logging.info(f"Saved object values for bundle: created={created_count}, deleted={deleted_count}")
+    except Exception as e:
+        logging.error(f"Failed to save object values: {e}")
+    
     job.state = models.JobStates.COMPLETED
     job.completion_time = timezone.now()
     job.save()

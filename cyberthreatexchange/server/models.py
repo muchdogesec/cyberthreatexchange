@@ -55,13 +55,29 @@ class Identity(models.Model):
         from .serializers import IdentitySerializer
 
         return json.loads(stix2.parse(IdentitySerializer(self).data).serialize())
+    
+class Category(models.TextChoices):
+    OTHER = "other"
+    APT_GROUP = "apt_group"
+    VULNERABILITY = "vulnerability"
+    DATA_LEAK = "data_leak"
+    MALWARE = "malware"
+    RANSOMWARE = "ransomware"
+    INFOSTEALER = "infostealer"
+    THREAT_ACTOR = "threat_actor"
+    CAMPAIGN = "campaign"
+    EXPLOIT = "exploit"
+    CYBER_CRIME = "cyber_crime"
+    INDICATOR_OF_COMPROMISE = "indicator_of_compromise"
+    TTP = "ttp"
 
 
 class Feed(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, unique=True)
     collection_name = models.CharField(max_length=200, unique=True)
     name = models.CharField(max_length=200)
-    description = models.TextField(null=True)
+    description = models.TextField(null=True, max_length=140)
+    short_description = models.CharField(max_length=512, null=True, blank=True)
     tags = ArrayField(models.CharField(max_length=100), default=list, blank=True)
     last_run = models.DateTimeField(null=True)
     identity = models.ForeignKey(
@@ -69,6 +85,11 @@ class Feed(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    categories = ArrayField(
+        models.CharField(max_length=128, choices=Category.choices),
+        default=list,
+        blank=True,
+    )
 
     def save(self, *args, **kwargs) -> None:
         self.collection_name = self.generate_collection_name()
@@ -149,6 +170,37 @@ def delete_collections(sender, instance: Feed, **kwargs):
         graph.delete_vertex_collection(instance.collection_name+'_vertex_collection', purge=True)
     except BaseException as e:
         logging.error(f"cannot delete collection `{instance.collection_name}`: {e}") 
+
+from django.contrib.postgres.search import SearchVectorField
+
+class ObjectValue(models.Model):
+    """
+    Stores searchable values from STIX objects including their references.
+    Enables searching by value and finding objects where referenced objects match.
+    Unique constraint: (feed, stix_id, modified, value, value_type, is_ref, ref_stix_id)
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
+    feed = models.ForeignKey(Feed, on_delete=models.CASCADE)
+    stix_id = models.CharField(max_length=255)
+    stix_type = models.CharField(max_length=100)
+    modified = models.DateTimeField()
+    value = models.TextField(db_index=True)
+    value_type = models.CharField(max_length=100)
+    is_ref = models.BooleanField(default=False)
+    ref_stix_id = models.CharField(max_length=255, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [['feed', 'stix_id', 'modified', 'value', 'value_type', 'is_ref', 'ref_stix_id']]
+        indexes = [
+            models.Index(fields=['feed', 'value']),
+            models.Index(fields=['feed', 'stix_id', 'modified']),
+            models.Index(fields=['feed', 'ref_stix_id']),
+            models.Index(fields=['feed', 'is_ref']),
+        ]
+
+    def __str__(self):
+        return f"{self.stix_id} ({self.value_type}): {self.value}"
 
 
 class JobTypes(models.TextChoices):

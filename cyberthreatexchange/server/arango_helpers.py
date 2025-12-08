@@ -114,6 +114,11 @@ CAPEC_TYPES = set(
     ["attack-pattern", "course-of-action", "identity", "marking-definition"]
 )
 
+RELATIONSHIP_TYPES = {
+    "relationship",
+    "sighting"
+}
+
 LOCATION_SUBTYPES = set(["intermediate-region", "sub-region", "region", "country"])
 
 CTI_SORT_FIELDS = [
@@ -139,6 +144,8 @@ ALL_SEARCH_TYPES = CAPEC_TYPES.union(
     CWE_TYPES,
     TLP_TYPES,
     ATLAS_TYPES,
+    RELATIONSHIP_TYPES,
+    ["report", "indicator"],
 )
 SEMANTIC_SEARCH_SORT_FIELDS = [
     "modified_descending",
@@ -398,18 +405,65 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
         ).replace("#late_filters", "\n".join(late_filters))
         return self.execute_query(query, bind_vars=binds)
 
-    def semantic_search(self, collections=None):
+    def semantic_search(self, collections=None, valid_types=ALL_SEARCH_TYPES):
+        valid_types = set(valid_types.copy())
         binds = {}
         search_filters = []
+        extra_filters = []
         if search_param := self.query.get("text"):
             search_filters.append(self.SEMANTIC_SEARCH_QUERY_TEXT)
             binds.update(search_param=search_param)
 
+        if name := self.query.get("name"):
+            extra_filters.append(
+                "FILTER CONTAINS(LOWER(doc.name), @name_param)"
+            )
+            binds.update(name_param=name.lower())
+
         search_filters.append("doc._is_latest == TRUE")
 
+        if value := self.query.get("value"):
+            binds["search_value"] = value.lower()
+            extra_filters.append(
+                """
+                FILTER (
+                    doc.type == 'artifact' AND CONTAINS(LOWER(doc.payload_bin), @search_value) OR
+                    doc.type == 'autonomous-system' AND CONTAINS(LOWER(doc.number), @search_value) OR
+                    doc.type == 'bank-account' AND CONTAINS(LOWER(doc.iban), @search_value) OR
+                    doc.type == 'payment-card' AND CONTAINS(LOWER(doc.value), @search_value) OR
+                    doc.type == 'cryptocurrency-transaction' AND CONTAINS(LOWER(doc.value), @search_value) OR
+                    doc.type == 'cryptocurrency-wallet' AND CONTAINS(LOWER(doc.value), @search_value) OR
+                    doc.type == 'directory' AND CONTAINS(LOWER(doc.path), @search_value) OR
+                    doc.type == 'domain-name' AND CONTAINS(LOWER(doc.value), @search_value) OR
+                    doc.type == 'email-addr' AND CONTAINS(LOWER(doc.value), @search_value) OR
+                    doc.type == 'email-message' AND CONTAINS(LOWER(doc.body), @search_value) OR
+                    doc.type == 'file' AND CONTAINS(LOWER(doc.name), @search_value) OR
+                    doc.type == 'ipv4-addr' AND CONTAINS(LOWER(doc.value), @search_value) OR
+                    doc.type == 'ipv6-addr' AND CONTAINS(LOWER(doc.value), @search_value) OR
+                    doc.type == 'mac-addr' AND CONTAINS(LOWER(doc.value), @search_value) OR
+                    doc.type == 'mutex' AND CONTAINS(LOWER(doc.value), @search_value) OR
+                    doc.type == 'network-traffic' AND CONTAINS(LOWER(doc.protocols), @search_value) OR
+                    doc.type == 'phone-number' AND CONTAINS(LOWER(doc.value), @search_value) OR
+                    doc.type == 'process' AND CONTAINS(LOWER(doc.pid), @search_value) OR
+                    doc.type == 'software' AND CONTAINS(LOWER(doc.name), @search_value) OR
+                    doc.type == 'url' AND CONTAINS(LOWER(doc.value), @search_value) OR
+                    doc.type == 'user-account' AND CONTAINS(LOWER(doc.display_name), @search_value) OR
+                    doc.type == 'user-agent' AND CONTAINS(LOWER(doc.string), @search_value) OR
+                    doc.type == 'windows-registry-key' AND CONTAINS(LOWER(doc.key), @search_value) OR
+                    doc.type == 'x509-certificate' AND CONTAINS(LOWER(doc.subject), @search_value)
+                    //generic
+                    OR
+                    CONTAINS(LOWER(doc.value), @search_value) OR
+                    CONTAINS(LOWER(doc.name), @search_value) OR
+                    CONTAINS(LOWER(doc.number), @search_value)
+                )
+                """.strip()
+            )
+
+        binds['types'] = list(valid_types)
+        search_filters.append("doc.type IN @types")
         if types := self.query_as_array("types"):
-            binds["types"] = types
-            search_filters.append("doc.type IN @types")
+            binds["types"] = list(valid_types.intersection(types))
         collections_set = [] if not collections else [set(collections)]
         if qq := self.query_as_array("feed_ids"):
             collections_set.append(set([f"ctx_{fid.replace('-', '')}_vertex_collection" for fid in qq]))
@@ -430,7 +484,6 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
             search_filters.append(
                 'ANALYZER(STARTS_WITH(doc._id, @filtered_collections), "identity")'
             )
-        extra_filters = []
 
         keep_verb = None
         if show_feed_id := self.query_as_bool("show_feed_id", False):

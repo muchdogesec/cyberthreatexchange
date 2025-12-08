@@ -38,6 +38,7 @@ router = routers.SimpleRouter(use_regex_path=False)
 router.register("identities", views.IdentityView, "identity-view")
 router.register("jobs", views.JobView, "job-view")
 router.register("search", views.SearchView, "semantic-search-view")
+router.register("search/values", views.ObjectValueSearchView, "object-value-search-view")
 router.register("feeds", views.FeedView, "feed-view")
 router.register("feeds/<feed_id>/objects", views.FeedObjectsView, "feed-objects-view")
 

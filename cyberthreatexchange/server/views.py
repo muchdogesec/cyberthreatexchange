@@ -45,6 +45,9 @@ from cyberthreatexchange.server.utils import Ordering, Pagination
 from drf_spectacular.views import SpectacularAPIView
 from cyberthreatexchange.worker.tasks import upload_bundle_task
 from dogesec_commons.utils.schemas import DEFAULT_400_RESPONSE, DEFAULT_404_RESPONSE
+from dogesec_commons.objects.helpers import SMO_TYPES
+from dogesec_commons.objects.helpers import SCO_TYPES
+from dogesec_commons.objects.helpers import SDO_TYPES
 
 
 class ChoiceCSVFilter(BaseCSVFilter):
@@ -307,11 +310,91 @@ class FeedView(viewsets.ModelViewSet):
                 style="form",
                 many=True,
             ),
+            # OpenApiParameter(
+            #     "text",
+            #     description="Filter the results by the `name` and `description` property of the object.",
+            #     type=OpenApiTypes.STR,
+            # ),
+        ],
+        responses=serializers.StixObjectsPlaceholderSerializer(many=True),
+    ),
+    sdos=extend_schema(
+        summary="List SDOs in a feed",
+        description="Allows a user to filter on all objects in a feed.",
+        parameters=[
             OpenApiParameter(
-                "text",
-                description="Filter the results by the `name` and `description` property of the object.",
+                "types",
+                description="Only show objects of selected types",
+                enum=SDO_TYPES,
+                explode=False,
+                style="form",
+                many=True,
+            ),
+            OpenApiParameter(
+                "name",
+                description="Filter the results by the name of the domain object",
                 type=OpenApiTypes.STR,
             ),
+        ],
+        responses=serializers.StixObjectsPlaceholderSerializer(many=True),
+    ),
+    smos=extend_schema(
+        summary="List SMOs in a feed",
+        description="Allows a user to filter on all objects in a feed.",
+        parameters=[
+            OpenApiParameter(
+                "types",
+                description="Only show objects of selected types",
+                enum=SMO_TYPES,
+                explode=False,
+                style="form",
+                many=True,
+            ),
+            # OpenApiParameter(
+            #     "text",
+            #     description="Filter the results by the `name` and `description` property of the object.",
+            #     type=OpenApiTypes.STR,
+            # ),
+        ],
+        responses=serializers.StixObjectsPlaceholderSerializer(many=True),
+    ),
+    scos=extend_schema(
+        summary="List SCOs in a feed",
+        description="Allows a user to filter on all objects in a feed.",
+        parameters=[
+            OpenApiParameter(
+                "types",
+                description="Only show objects of selected types",
+                enum=SCO_TYPES,
+                explode=False,
+                style="form",
+                many=True,
+            ),
+            OpenApiParameter(
+                "value",
+                description="Filter the results by the observed value",
+                type=OpenApiTypes.STR,
+            ),
+        ],
+        responses=serializers.StixObjectsPlaceholderSerializer(many=True),
+    ),
+    sros=extend_schema(
+        summary="List SROs in a feed",
+        description="Allows a user to filter on all objects in a feed.",
+        parameters=[
+            OpenApiParameter(
+                "types",
+                description="Only show objects of selected types",
+                enum=["relationship", "sighting"],
+                explode=False,
+                style="form",
+                many=True,
+            ),
+            # OpenApiParameter(
+            #     "text",
+            #     description="Filter the results by the `name` and `description` property of the object.",
+            #     type=OpenApiTypes.STR,
+            # ),
         ],
         responses=serializers.StixObjectsPlaceholderSerializer(many=True),
     ),
@@ -365,6 +448,31 @@ class FeedObjectsView(viewsets.GenericViewSet):
         feed = get_object_or_404(models.Feed, id=feed_id)
         helper = ArangoDBHelper(feed.vertex_collection, request)
         return helper.semantic_search([feed.collection_name])
+    
+    @decorators.action(detail=False, methods=["GET"])
+    def sdos(self, request, feed_id=None):
+        feed = get_object_or_404(models.Feed, id=feed_id)
+        helper = ArangoDBHelper(feed.vertex_collection, request)
+        return helper.semantic_search([feed.collection_name], valid_types=SDO_TYPES)
+    
+    @decorators.action(detail=False, methods=["GET"])
+    def scos(self, request, feed_id=None):
+        feed = get_object_or_404(models.Feed, id=feed_id)
+        helper = ArangoDBHelper(feed.vertex_collection, request)
+        return helper.semantic_search([feed.collection_name], valid_types=SCO_TYPES)
+    
+    @decorators.action(detail=False, methods=["GET"])
+    def smos(self, request, feed_id=None):
+        feed = get_object_or_404(models.Feed, id=feed_id)
+        helper = ArangoDBHelper(feed.vertex_collection, request)
+        return helper.semantic_search([feed.collection_name], valid_types=SMO_TYPES)
+    
+    @decorators.action(detail=False, methods=["GET"])
+    def sros(self, request, feed_id=None):
+        SRO_TYPES = ["relationship"]
+        feed = get_object_or_404(models.Feed, id=feed_id)
+        helper = ArangoDBHelper(feed.vertex_collection, request)
+        return helper.semantic_search([feed.collection_name], valid_types=SRO_TYPES)
 
     def retrieve(self, request, object_id, feed_id=None):
         feed = get_object_or_404(models.Feed, id=feed_id)
@@ -434,6 +542,7 @@ class SearchView(viewsets.ViewSet):
             choices=[(f, f) for f in SEMANTIC_SEARCH_SORT_FIELDS],
             help_text="attribute to sort by",
         )
+        name = CharFilter()
 
     def list(self, request, *args, **kwargs):
         return ArangoDBHelper("semantic_search_view", request).semantic_search()
@@ -513,3 +622,160 @@ class SchemaViewCached(SpectacularAPIView):
                 "Content-Disposition": f'inline; filename="{self._get_filename(request, version)}"'
             },
         )
+
+
+class ObjectValueFilterSet(FilterSet):
+    """Filter set for ObjectValue search."""
+    value = CharFilter(
+        field_name='value',
+        lookup_expr='icontains',
+        help_text='Search for values (full-text search)'
+    )
+    
+    class Meta:
+        model = models.ObjectValue
+        fields = ['value']
+
+
+@extend_schema_view(
+    list=extend_schema(
+        summary="Search Object Values",
+        description="Search STIX object values with reference resolution using full-text search. "
+                   "When searching by a value that matches a reference, objects containing that reference will also appear.",
+        parameters=[
+            OpenApiParameter(
+                name='feed_ids',
+                description='Comma-separated UUIDs of feeds to search within (optional, if omitted searches all feeds)',
+                required=False,
+                location=OpenApiParameter.QUERY,
+            ),
+            OpenApiParameter(
+                name='value',
+                description='Search term (full-text search)',
+                required=True,
+                location=OpenApiParameter.QUERY,
+            ),
+            OpenApiParameter(
+                name='show_older_versions',
+                description='If false (default), only return latest version of each object. If true, return all versions.',
+                required=False,
+                location=OpenApiParameter.QUERY,
+            ),
+        ],
+    ),
+)
+class ObjectValueSearchView(mixins.ListModelMixin, viewsets.GenericViewSet):
+    """
+    Search endpoint for STIX object values.
+    
+    Uses PostgreSQL full-text search (websearch) for better relevance and performance.
+    When searching by a value that matches a reference:
+    - Direct matches: Objects whose values match the search term
+    - Reference matches: Objects that reference objects with matching values
+    
+    This enables transitive searching where searching for a malware name will also 
+    return campaigns that reference that malware.
+    
+    Optional feed filtering:
+    - If feed_ids provided: Only returns results found in those feeds
+    - If feed_ids omitted: Returns results from all feeds
+    
+    Version filtering:
+    - If show_older_versions=false (default): Only latest modified version per stix_id
+    - If show_older_versions=true: All versions returned
+    """
+    
+    openapi_tags = ["Search"]
+    queryset = models.ObjectValue.objects.all()
+    serializer_class = serializers.ObjectValueSerializer
+    pagination_class = Pagination("search_results")
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = ObjectValueFilterSet
+    
+    def get_queryset(self):
+        """Search with optional feed filtering and version control using full-text search."""
+        from django.db.models import Q, Case, When, Value, IntegerField, F, Window, Max
+        from django.db.models.functions import RowNumber
+        from django.contrib.postgres.search import SearchVector, SearchQuery, SearchRank
+        
+        search_value = self.request.query_params.get('value', '').strip()
+        feed_ids_param = self.request.query_params.get('feed_ids', '').strip()
+        show_older_versions = self.request.query_params.get('show_older_versions', 'false').lower() == 'true'
+        
+        if not search_value:
+            raise exceptions.ValidationError({'value': 'This field is required.'})
+        
+        # Parse feed_ids if provided
+        feed_ids_list = []
+        if feed_ids_param:
+            feed_ids_list = [fid.strip() for fid in feed_ids_param.split(',') if fid.strip()]
+            # Validate feed IDs exist
+            existing_feeds = models.Feed.objects.filter(id__in=feed_ids_list).count()
+            if existing_feeds != len(feed_ids_list):
+                raise exceptions.ValidationError({'feed_ids': 'One or more feed IDs not found.'})
+        
+        # Start with base queryset
+        queryset = models.ObjectValue.objects.all()
+        
+        # Filter by feed_ids if provided
+        if feed_ids_list:
+            queryset = queryset.filter(feed_id__in=feed_ids_list)
+        
+        # Pre-filter to only latest versions if needed (before search)
+        if not show_older_versions:
+            # Subquery to get the max modified per stix_id per feed
+            from django.db.models import OuterRef, Subquery
+            max_modified_subquery = models.ObjectValue.objects.filter(
+                stix_id=OuterRef('stix_id'),
+                feed_id=OuterRef('feed_id')
+            ).values('stix_id', 'feed_id').annotate(
+                max_mod=Max('modified')
+            ).values('max_mod')
+            
+            queryset = queryset.annotate(
+                max_modified=Subquery(max_modified_subquery)
+            ).filter(modified=F('max_modified'))
+        
+        # Split search value into individual words for independent matching
+        search_words = [word.strip() for word in search_value.split() if word.strip()]
+        
+        if not search_words:
+            raise exceptions.ValidationError({'value': 'No valid search terms provided.'})
+        
+        # Build Q objects for icontains matching on each word
+        from django.db.models import Q
+        word_q = Q()
+        for word in search_words:
+            word_q |= Q(value__icontains=word)
+        
+        # Get direct value matches using icontains
+        direct_matches = queryset.filter(
+            is_ref=False
+        ).filter(word_q).values('id')
+        
+        # Get reference matches (objects that reference objects with matching values)
+        # Step 1: Find all objects with values matching the search terms
+        matching_stix_ids = queryset.filter(
+            word_q
+        ).values_list('stix_id', flat=True).distinct()
+        
+        # Step 2: Find objects that reference those matching objects
+        ref_matches = queryset.filter(
+            is_ref=True,
+            ref_stix_id__in=matching_stix_ids
+        ).values('id')
+        
+        # Combine all result sets
+        combined_ids = direct_matches.union(ref_matches)
+        
+        # Query back to get full model instances and sort by modified date
+        combined_queryset = models.ObjectValue.objects.filter(
+            id__in=combined_ids
+        ).order_by('-modified').distinct()
+        
+        return combined_queryset
+    
+    def list(self, request, *args, **kwargs):
+        """List search results with relevance scoring."""
+        return super().list(request, *args, **kwargs)
+
