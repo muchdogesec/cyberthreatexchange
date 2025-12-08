@@ -1,4 +1,4 @@
-# cyberthreatexchange
+# Cyber Threat Exchange
 
 ## Overview
 
@@ -18,140 +18,50 @@ Our need for something more custom stems from two main requirements:
 1. We want to expose this via a web app
 2. We want to allows users to use custom objects/properties in a controlled way (via our [stix2extensions](https://github.com/muchdogesec/stix2extensions) repository)
  
-## Endpoints
+## Install
 
-### Feeds
+### Download and configure
 
-#### `POST /feed`
+```shell
+# clone the latest code
+git clone https://github.com/muchdogesec/cyberthreatexchange
+```
 
-This will create a feed. Feeds have their own ArangoDB vertex/edge collection pair.
+### Pre-requisites
 
-To create a feed user must pass
+**IMPORTANT**: ArangoDB and Postgres must be running. These are not deployed in the compose file.
 
-* `name`
-* `description`
-* `tags`
-* `identity_id`
+If you are not sure what you are doing here, [follow the basic setup steps here](https://community.dogesec.com/t/best-way-to-create-databases-for-obstracts/153/2).
 
-Feed will also have autogenerate
+### Configuration options
 
-* `uuid`
-* `created`
-* `modified`
+Cyber Threat Exchange has various settings that are defined in an `.env` file.
 
-#### `PATCH /feed`
+To create a template for the file:
 
-User can edit the following feed properties
+```shell
+cp .env.example .env
+```
 
-* `name`
-* `description`
-* `tags`
+To see more information about how to set the variables, and what they do, read the `.env.markdown` file.
 
-On PATCH will update modified time
+### Build the Docker Image
 
-#### POST `/feed/<ID>/bundle`
+```shell
+sudo docker compose build
+```
 
-Allows user to post a STIX bundle of objects to their feed.
+### Start the server
 
-We do not validate STIX objects -- just ensure they pass 
+```shell
+sudo docker compose up
+```
 
-##### A note on bundle upload behaviour
+### Access the server
 
-* will store bundle id against notes of each object, note, this could be more than one bundle when object id updated more than one time
-* Ideally we would break bundle up into objects... if one object failed, the rest of the bundle would still process and we could show user exactly what item failed
-* this will be considered as one job, if one or more objects in upload fail the job will continue. All successes and errors will be reported in the job individually so it is clear what objects failed (and why), and which uploaded successfully.
+The webserver (Django) should now be running on: http://127.0.0.1:8007/
 
-#### PATCH `/feed/<ID>/objects/<ID>`
-
-Allows user to update an object in their feed.
-
-##### A note on PATCH behaviour (for SDO/SRO types)
-
-* user cannot modify `id`, `type`, `created`, `modified`, `created_by_ref` or `spec_version`
-* For SDO and SRO objects on all successful modifications the `modified` time will be automatically update to match the execution time of the change
-
-##### A note on PATCH behaviour (for SCO types)
-
-* user cannot modify `id`, `type`, `_created_by_ref`
-
-#### DELETE `/feed/<ID>/objects/<ID>`
-
-Allows user to update an object in their feed.
-
-Will only, object all versions, all SROs (inc embedded ref SROs) pointing to / from the objects.
-
-#### GET `/feed/<ID>/objects/`
-
-Allows user to filter on all objects in the bundle with lots of filtering options. Due to the fact SCOs and SDOs will be combined we need to find a creative way to filter.
-
-#### GET `/feed/<ID>/objects/<ID>`
-
-
-#### GET `/feed/<ID>/objects/<ID>/versions`
-
-#### GET `/feed/<ID>/objects/<ID>/bundle`
-
-Get all directly related objects
-
-### Identities
-
-Identities are the owners of feeds
-
-#### POST `/identity/`
-
-This allows a user to upload a STIX identity object 
-
-#### PATCH `/identity/`
-
-
-#### GET `/identity/`
-
-#### GET `/identity/<ID>/`
-
-### Jobs
-
-All POST and PATCH request will be tracked as jobs to highlight any errors on insert to db.
-
-We will expose `job/` and `job/<ID>` to allow user to get info of their requests,
-
---- 
-
-TODO BELOW THIS POINT
-
-### Global search
-
-* GET `search/`
-	* filters: `text`
-	* this endpoint is designed to be a simple search through all objects and properties to match string. It's main aim is to provide a basic search interface to retrieve objects (vs. very specific object searches)
-
-### Objects
-
-For each object type there will be the following available endpoints:
-
-* GET `<STIX TYPE>/<OBJECT TYPE>` (e.g. `sdo/attack-pattern/`): Object search
-	* returns all objects that match the type and filters
-	* filters: for all properties defined in the core schema + any registered extensions in stix2extensions + pagination + visible_to (not for SCOs)
-	* note: this endpoint exists, because each type has lots of different property names to search on, so a global search is not super simple
-* GET `<STIX TYPE>/<OBJECT TYPE>/<ID>` (e.g. `sdo/attack-pattern/attack-pattern--3ce78b4c-273f-43ea-a2ba-a0755ba8e3c7`): Single object lookup
-	* has filters to define the specific version + visible_to (not for SCOs)
-* GET `<STIX TYPE>/<OBJECT TYPE>/<ID>/versions` (e.g. `sdo/attack-pattern/attack-pattern--3ce78b4c-273f-43ea-a2ba-a0755ba8e3c7/versions`: Version search
-	* returns a list of all versions of the object in the database
-	* filters: visible_to (not for SCOs)
-* GET `<STIX TYPE>/<OBJECT TYPE>/<ID>/bundle` (e.g. `sdo/attack-pattern/attack-pattern--3ce78b4c-273f-43ea-a2ba-a0755ba8e3c7/bundle`: Bundle generation
-	* returns a bundle of objects related to the one defined 
-	* filters: visible_to (not for SCOs), include_embedded, type
-* POST `<STIX TYPE>/<OBJECT TYPE>/<ID>`
-	* allows a user to add a new object
-* PATCH `<STIX TYPE>/<OBJECT TYPE>/<ID>`
-
-
-
-
-
-
-
-
-
+You can access the Swagger UI for the API in a browser at: http://127.0.0.1:8007/api/schema/swagger-ui/
 
 ## Support
 
