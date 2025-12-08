@@ -41,10 +41,11 @@ router.register("search", views.SearchView, "semantic-search-view")
 router.register("search/values", views.ObjectValueSearchView, "object-value-search-view")
 router.register("feeds", views.FeedView, "feed-view")
 router.register("feeds/<feed_id>/objects", views.FeedObjectsView, "feed-objects-view")
-
+healthcheck = routers.SimpleRouter(use_regex_path=False)
+healthcheck.register('', views.HealthCheckView, "service-status-view")
 
 urlpatterns = [
-    # path(f'api/healthcheck/', views.health_check),
+    path(f'api/healthcheck/', include(healthcheck.urls)),
     path(f'api/{API_VERSION}/', include(router.urls)),
     path('admin/', admin.site.urls),
     # YOUR PATTERNS

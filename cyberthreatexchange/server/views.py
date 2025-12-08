@@ -778,4 +778,22 @@ class ObjectValueSearchView(mixins.ListModelMixin, viewsets.GenericViewSet):
     def list(self, request, *args, **kwargs):
         """List search results with relevance scoring."""
         return super().list(request, *args, **kwargs)
+    
+
+@extend_schema_view(
+    list=extend_schema(
+        responses={204: {}},
+        summary="Check if the service is running",
+        description=textwrap.dedent(
+            """
+        If this endpoint returns a 204, the service is running as expected.
+        """
+        ),
+    ),
+)
+class HealthCheckView(viewsets.ViewSet):
+    openapi_tags = ["Server Status"]
+
+    def list(self, request, *args, **kwargs):
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
