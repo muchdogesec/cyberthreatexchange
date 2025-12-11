@@ -15,6 +15,7 @@ django-cleanup
 ## dogesec
 dogesec_commons
 stix2arango
+stix2extensions
 
 ## production
 gunicorn==23.0.0

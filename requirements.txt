@@ -6,6 +6,8 @@
 #
 amqp==5.3.1
     # via kombu
+annotated-types==0.7.0
+    # via pydantic
 antlr4-python3-runtime==4.9.3
     # via stix2-patterns
 asgiref==3.11.0
@@ -95,6 +97,10 @@ psycopg2-binary==2.9.11
     # via
     #   -r requirements.in
     #   dogesec-commons
+pydantic==2.12.5
+    # via stix2extensions
+pydantic-core==2.41.5
+    # via pydantic
 pyjwt==2.10.1
     # via python-arango
 python-arango==8.2.3
@@ -122,6 +128,7 @@ requests==2.32.5
     #   requests-toolbelt
     #   stix2
     #   stix2arango
+    #   stix2extensions
 requests-toolbelt==1.0.0
     # via python-arango
 rpds-py==0.29.0
@@ -140,12 +147,22 @@ stix2==3.0.1
     # via
     #   dogesec-commons
     #   stix2arango
+    #   stix2extensions
 stix2-patterns==2.0.0
     # via stix2
 stix2arango==1.1.8
     # via -r requirements.in
+stix2extensions==2.0.2
+    # via -r requirements.in
 tqdm==4.67.1
     # via stix2arango
+typing-extensions==4.15.0
+    # via
+    #   pydantic
+    #   pydantic-core
+    #   typing-inspection
+typing-inspection==0.4.2
+    # via pydantic
 tzdata==2025.2
     # via kombu
 uritemplate==4.2.0
