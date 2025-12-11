@@ -176,7 +176,6 @@ SPECTACULAR_SETTINGS: dict[str, Any] = {
         {"name": "Search", "description": "Search for data across all knowledgebases."},
         {"name": "Feeds", "description": "Manage and search Feeds objects."},
         {"name": "Identities", "description": "Manage and search identity objects."},
-        {"name": "Objects", "description": "Explore all STIX Objects in the database."},
         {"name": "Jobs", "description": "Search through Jobs triggered when downloading data and creating relationships."},
         {"name": "Server Status", "description": "Checks health of the server."},
 
