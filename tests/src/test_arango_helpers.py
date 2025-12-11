@@ -239,6 +239,14 @@ class TestArangoDBHelperWithRealData:
                     "indicator--8e2e2d2b-17d4-4cbf-938f-98ee46b3cd3f",
                 ],
             ),
+            (
+                {"stix_ids": "relationship--a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d,malware--d1c612bc-146f-4b65-b7b0-9a54a14150a4,indicator--8e2e2d2b-17d4-4cbf-938f-98ee46b3cd3f"},
+                [
+                    "malware--d1c612bc-146f-4b65-b7b0-9a54a14150a4",
+                    "indicator--8e2e2d2b-17d4-4cbf-938f-98ee46b3cd3f",
+                    "relationship--a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d"
+                ],
+            )
         ],
     )
     def test_semantic_search_params(self, arango_helper, params, expected_ids):

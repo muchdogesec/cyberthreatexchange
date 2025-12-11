@@ -262,6 +262,11 @@ class FeedView(viewsets.ModelViewSet):
                 description="Filter the results by the name of the domain object",
                 type=OpenApiTypes.STR,
             ),
+            OpenApiParameter(
+                "text",
+                description="Filter the results by the `name` and `description` property of the object.",
+                type=OpenApiTypes.STR,
+            ),
         ],
         responses=serializers.StixObjectsPlaceholderSerializer(many=True),
     ),
@@ -317,11 +322,6 @@ class FeedView(viewsets.ModelViewSet):
                 style="form",
                 many=True,
             ),
-            # OpenApiParameter(
-            #     "text",
-            #     description="Filter the results by the `name` and `description` property of the object.",
-            #     type=OpenApiTypes.STR,
-            # ),
         ],
         responses=serializers.StixObjectsPlaceholderSerializer(many=True),
     ),
@@ -344,6 +344,7 @@ class FeedView(viewsets.ModelViewSet):
         summary="Get bundle of related objects from a feed",
         description="Get all objects directly related to the specified object within the feed.",
         responses=serializers.StixObjectsPlaceholderSerializer(many=True),
+        filters=False,
     ),
 )
 class FeedObjectsView(viewsets.GenericViewSet):
@@ -355,6 +356,7 @@ class FeedObjectsView(viewsets.GenericViewSet):
     http_method_names = ["get", "post", "delete", "head", "options"]
     openapi_tags = ["Feeds"]
     lookup_url_kwarg = "object_id"
+    filter_backends = [DjangoFilterBackend]
     openapi_path_params = [
         OpenApiParameter(
             "object_id",
@@ -370,6 +372,8 @@ class FeedObjectsView(viewsets.GenericViewSet):
         ),
     ]
     pagination_class = Pagination("objects")
+    class filterset_class(FilterSet):
+        stix_ids = BaseCSVFilter(lookup_expr="in", help_text="Filter by STIX IDs.")
 
     def list(self, request, feed_id=None):
         feed = get_object_or_404(models.Feed, id=feed_id)

@@ -414,6 +414,9 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
             binds.update(name_param=name.lower())
 
         search_filters.append("doc._is_latest == TRUE")
+        if stix_ids := self.query_as_array("stix_ids"):
+            binds["stix_ids"] = stix_ids
+            search_filters.append("doc.id IN @stix_ids")
 
         if value := self.query.get("value"):
             binds["search_value"] = value.lower()
