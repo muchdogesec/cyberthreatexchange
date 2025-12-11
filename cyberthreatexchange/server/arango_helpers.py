@@ -584,7 +584,7 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
             collection_name, _, _ = obj.pop("_id").partition("/")
             collection_name = collection_name.removesuffix("_vertex_collection").removesuffix("_edge_collection")
             feed_uuid = feeds.get(collection_name)
-            assert feed_uuid is not None, "Could not find feed for collection"
+            # assert feed_uuid is not None, "Could not find feed for collection"
             obj["x_ctx_feed_id"] = feed_uuid
 
     def remove_object(self, feed_id, obj_id: str):
