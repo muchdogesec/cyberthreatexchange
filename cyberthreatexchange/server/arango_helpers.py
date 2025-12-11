@@ -1,4 +1,5 @@
 import contextlib
+import itertools
 from types import SimpleNamespace
 import typing
 import uuid
@@ -10,6 +11,9 @@ from dogesec_commons.objects.helpers import ArangoDBHelper as DSC_ArangoDBHelper
 from rest_framework import exceptions
 from cyberthreatexchange.server import models, utils
 from arango.database import StandardDatabase
+from rest_framework.request import Request
+
+from cyberthreatexchange.worker.utils import md5_hash
 
 if typing.TYPE_CHECKING:
     from .. import settings
@@ -114,10 +118,7 @@ CAPEC_TYPES = set(
     ["attack-pattern", "course-of-action", "identity", "marking-definition"]
 )
 
-RELATIONSHIP_TYPES = {
-    "relationship",
-    "sighting"
-}
+RELATIONSHIP_TYPES = {"relationship", "sighting"}
 
 LOCATION_SUBTYPES = set(["intermediate-region", "sub-region", "region", "country"])
 
@@ -158,7 +159,6 @@ SEMANTIC_SEARCH_SORT_FIELDS = [
     "type_descending",
 ]
 ATTACK_SORT_FIELDS = CTI_SORT_FIELDS + ["attack_id_ascending", "attack_id_descending"]
-
 
 
 class ArangoDBHelper(DSC_ArangoDBHelper):
@@ -280,11 +280,9 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
         }
         filters = ["FILTER doc.modified == @stix_version"]
         stix_version: str = None
-        if q := self.query.get('version'):
+        if q := self.query.get("version"):
             stix_version = q
-            bind_vars.update(
-                stix_version=stix_version
-            )
+            bind_vars.update(stix_version=stix_version)
         else:
             filters[0] = "FILTER doc._is_latest"
 
@@ -307,13 +305,13 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
             #main_filter
             #filters
             LIMIT @offset, @count
-            RETURN KEEP(doc, @keep_values || APPEND(KEYS(doc, TRUE), '_stix2arango_note'))
+            RETURN KEEP(doc, @keep_values || KEYS(doc, TRUE))
             """
         query = query.replace("#main_filter", main_filter).replace(
             "#filters", "\n".join(filters)
         )
         if bundle:
-            bind_vars.update(keep_values=["_id", "_stix2arango_note"])
+            bind_vars.update(keep_values=["_id"])
         if nav_mode:
             bind_vars.update(
                 keep_values=[
@@ -322,7 +320,6 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
                     "external_references",
                     "id",
                     "type",
-                    "_stix2arango_note",
                 ]
             )
         bind_vars.update(offset=0, count=None)
@@ -345,17 +342,19 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
             self.container, matches, self.page, self.page_size, len(matches)
         )
 
-    def get_default_objects(self, db):
-        return []
-    
     def get_versions(self, stix_id):
         query = """
     FOR d IN @@view SEARCH d.id == @stix_id
     SORT d.modified DESC
     RETURN DISTINCT d.modified
 """
-        return Response(self.execute_query(query, bind_vars={'@view': self.semantic_search_view, 'stix_id': stix_id}, paginate=False))
-
+        return Response(
+            self.execute_query(
+                query,
+                bind_vars={"@view": self.semantic_search_view, "stix_id": stix_id},
+                paginate=False,
+            )
+        )
 
     def get_bundle(self, matches):
         binds = {"@view": settings.VIEW_NAME, "matches": matches}
@@ -374,11 +373,7 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
             late_filters.append("FILTER d.type IN @types")
             binds["types"] = types
 
-        binds["more_bundle_ids"] = [
-            x
-            for x in self.get_default_objects(self.db)
-            if x.startswith(self.collection)
-        ]
+        binds["more_bundle_ids"] = []
 
         query = """
     LET matched_ids = @matches[*]._id
@@ -415,9 +410,7 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
             binds.update(search_param=search_param)
 
         if name := self.query.get("name"):
-            extra_filters.append(
-                "FILTER CONTAINS(LOWER(doc.name), @name_param)"
-            )
+            extra_filters.append("FILTER CONTAINS(LOWER(doc.name), @name_param)")
             binds.update(name_param=name.lower())
 
         search_filters.append("doc._is_latest == TRUE")
@@ -460,13 +453,15 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
                 """.strip()
             )
 
-        binds['types'] = list(valid_types)
+        binds["types"] = list(valid_types)
         search_filters.append("doc.type IN @types")
         if types := self.query_as_array("types"):
             binds["types"] = list(valid_types.intersection(types))
         collections_set = [] if not collections else [set(collections)]
         if qq := self.query_as_array("feed_ids"):
-            collections_set.append(set([f"ctx_{fid.replace('-', '')}_vertex_collection" for fid in qq]))
+            collections_set.append(
+                set([f"ctx_{fid.replace('-', '')}_vertex_collection" for fid in qq])
+            )
 
         if qq := self.query_as_array("author_ids"):
             author_collections = []
@@ -500,14 +495,16 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
         return resp
 
     def get_existing_objects(
-        self, feed_id, object_ids, properties=["created", "modified", "created_by_ref", "_record_md5_hash"]
+        self,
+        feed_obj: models.Feed,
+        object_ids: list[str],
+        properties=["created", "modified", "created_by_ref", "_record_md5_hash"],
     ):
         from . import models
 
         properties = set(properties)
         properties.add("id")
 
-        feed_obj = models.Feed.objects.get(id=feed_id)
         bind_vars = {
             "object_ids": object_ids,
             "properties": list(properties),
@@ -581,9 +578,8 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
     def add_feed_id(objects):
         for obj in objects:
             collection_name, _, _ = obj.pop("_id").partition("/")
-            feed_uuid = collection_name.split('_')[1]
+            feed_uuid = collection_name.split("_")[1]
             obj["x_ctx_feed_id  "] = str(uuid.UUID(feed_uuid))
-
 
     def remove_object(self, feed_id, obj_id: str):
         feed = models.Feed.objects.get(id=feed_id)
@@ -604,6 +600,80 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
         FOR key IN UNION(FIRST, SECOND)
         RETURN key
         """
-        bind_vars = {"@collection": feed.vertex_collection, "@edge_collection": feed.edge_collection, "obj_id": obj_id}
+        bind_vars = {
+            "@collection": feed.vertex_collection,
+            "@edge_collection": feed.edge_collection,
+            "obj_id": obj_id,
+        }
         self.db.aql.execute(query, bind_vars=bind_vars, paginate=False)
         return True
+
+    def build_context(self, context: dict, objects: list[dict], feed: models.Feed):
+        obj_ids = []
+        rel_ids = {}
+        warnings = {}
+        try:
+            for obj in objects:
+                obj_id = obj["id"]
+                if obj["type"] == "relationship":
+                    rel_ids[obj_id] = [obj.get("source_ref"), obj.get("target_ref")]
+                obj_ids.append(obj.get("id"))
+        except:
+            return context
+
+        context.update(
+            obj_ids=obj_ids,
+            rel_ids=rel_ids,
+            existing_objects=self.get_existing_objects(
+                feed, list(itertools.chain(obj_ids, *rel_ids.values()))
+            ),
+            warnings=warnings,
+        )
+        for i, obj in enumerate(objects):
+            if obj_ids.count(obj["id"]) > 1:
+                warnings[i] = {
+                    "type": "duplicate_object",
+                    "message": f"Duplicate object removed before upload",
+                    "id": obj["id"],
+                    "resolution": "skipped",
+                    "index": i,
+                }
+                objects.remove(obj)
+            if obj["id"] in context["existing_objects"] and md5_hash(obj) == context[
+                "existing_objects"
+            ][obj["id"]].get("_record_md5_hash"):
+                warnings[i] = {
+                    "type": "existing_object",
+                    "message": f"stix object already exists in backend",
+                    "id": obj["id"],
+                    "resolution": "skipped",
+                    "index": i,
+                }
+            if obj["type"] == "relationship":
+                source_ref = obj.get("source_ref")
+                target_ref = obj.get("target_ref")
+                if (
+                    source_ref not in obj_ids
+                    and source_ref not in context["existing_objects"]
+                ):
+                    warnings[i] = {
+                        "type": "missing_source",
+                        "message": f"could not resolve obj.source_ref ({source_ref}) for relationship in feed or upload",
+                        "id": obj["id"],
+                        "resolution": "skipped",
+                        "index": i,
+                    }
+                    continue
+                if (
+                    target_ref not in obj_ids
+                    and target_ref not in context["existing_objects"]
+                ):
+                    warnings[i] = {
+                        "type": "missing_target",
+                        "message": f"could not resolve obj.target_ref ({target_ref}) for relationship in feed or upload",
+                        "id": obj["id"],
+                        "resolution": "skipped",
+                        "index": i,
+                    }
+                    continue
+        return context

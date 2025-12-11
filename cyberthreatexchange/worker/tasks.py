@@ -9,6 +9,8 @@ import tempfile
 import typing
 from django.utils import timezone
 from django.conf import settings
+
+from cyberthreatexchange.worker.utils import md5_hash
 from .celery import app
 from stix2arango.stix2arango import Stix2Arango
 import logging
@@ -57,10 +59,13 @@ def upload_bundle_task(job_id=None, warnings=None):
         create_collection=False,
     )
     bundle = job.payload.copy()
-    objects_to_process = bundle.get('objects', [])
-    
-    if warnings:
-        objects_to_process = [obj.copy() for i, obj in enumerate(objects_to_process) if i not in warnings]
+    objects_to_process = []
+    warnings = warnings or {}
+    for i, obj_it in enumerate(bundle.get('objects', [])):
+        obj = obj_it.copy()
+        if i not in warnings:
+            objects_to_process.append(obj)
+            obj['_record_md5_hash'] = md5_hash(obj)
     
     # Upload bundle to ArangoDB
     s2a.run(data=dict(
@@ -80,7 +85,7 @@ def upload_bundle_task(job_id=None, warnings=None):
     job.completion_time = timezone.now()
     job.save()
     job.feed.last_run = timezone.now()
-    job.feed.save()
+    job.feed.save(update_fields=['last_run'])
 
 
 from celery import signals

@@ -7,6 +7,8 @@ import logging
 import textwrap
 from django.utils import timezone
 
+from cyberthreatexchange.worker.utils import md5_hash
+
 SEMANTIC_SEARCH_SORT_FIELDS = [
     "modified_descending",
     "modified_ascending",
@@ -168,7 +170,7 @@ class FeedView(viewsets.ModelViewSet):
 
     class filterset_class(FilterSet):
         name = CharFilter(lookup_expr="icontains")
-        tags = BaseCSVFilter(field_name="tags", lookup_expr="icontains")
+        tags = BaseCSVFilter(field_name="tags", lookup_expr="contains")
 
         class Meta:
             model = models.Feed
@@ -222,79 +224,10 @@ class FeedView(viewsets.ModelViewSet):
         request = self.request
         feed_id = self.kwargs["feed_id"]
         context = self.get_serializer_context()
+        objects = request.data.get("objects", [])
         helper = ArangoDBHelper("", None)
-        obj_ids = []
-        rel_ids = {}
-        warnings = {}
-        objects: list = request.data.get("objects", [])
-        try:
-            for obj in objects:
-                obj_id = obj["id"]
-                if obj["type"] == "relationship":
-                    rel_ids[obj_id] = [obj.get("source_ref"), obj.get("target_ref")]
-                obj_ids.append(obj.get("id"))
-        except:
-            return context
-
-        context.update(
-            obj_ids=obj_ids,
-            rel_ids=rel_ids,
-            existing_objects=helper.get_existing_objects(
-                feed_id, list(itertools.chain(obj_ids, *rel_ids.values()))
-            ),
-            warnings=warnings,
-        )
-        for i, obj in enumerate(objects):
-            if obj_ids.count(obj["id"]) > 1:
-                warnings[i] = {
-                    "type": "duplicate_object",
-                    "message": f"Duplicate object removed before upload",
-                    "id": obj["id"],
-                    "resolution": "skipped",
-                    "index": i,
-                }
-                objects.remove(obj)
-            obj["id"] in context["existing_objects"] and print(
-                "yyy", context["existing_objects"][obj["id"]]
-            )
-            if obj["id"] in context["existing_objects"] and generate_md5(
-                {**obj, "_stix2arango_note": ""}
-            ) == context["existing_objects"][obj["id"]].get("_record_md5_hash"):
-                warnings[i] = {
-                    "type": "existing_object",
-                    "message": f"stix object already exists in backend",
-                    "id": obj["id"],
-                    "resolution": "skipped",
-                    "index": i,
-                }
-            if obj["type"] == "relationship":
-                source_ref = obj.get("source_ref")
-                target_ref = obj.get("target_ref")
-                if (
-                    source_ref not in obj_ids
-                    and source_ref not in context["existing_objects"]
-                ):
-                    warnings[i] = {
-                        "type": "missing_source",
-                        "message": f"could not resolve obj.source_ref ({source_ref}) for relationship in feed or upload",
-                        "id": obj["id"],
-                        "resolution": "skipped",
-                        "index": i,
-                    }
-                    continue
-                if (
-                    target_ref not in obj_ids
-                    and target_ref not in context["existing_objects"]
-                ):
-                    warnings[i] = {
-                        "type": "missing_target",
-                        "message": f"could not resolve obj.target_ref ({target_ref}) for relationship in feed or upload",
-                        "id": obj["id"],
-                        "resolution": "skipped",
-                        "index": i,
-                    }
-                    continue
-        return context
+        feed = self.get_object()
+        return helper.build_context(context, objects, feed)
 
 
 @extend_schema_view(
@@ -688,7 +621,7 @@ class ObjectValueSearchView(mixins.ListModelMixin, viewsets.GenericViewSet):
     openapi_tags = ["Search"]
     queryset = models.ObjectValue.objects.all()
     serializer_class = serializers.ObjectValueSerializer
-    pagination_class = Pagination("search_results")
+    pagination_class = Pagination("values")
     filter_backends = [DjangoFilterBackend]
     filterset_class = ObjectValueFilterSet
     
@@ -772,7 +705,6 @@ class ObjectValueSearchView(mixins.ListModelMixin, viewsets.GenericViewSet):
         combined_queryset = models.ObjectValue.objects.filter(
             id__in=combined_ids
         ).order_by('-modified').distinct()
-        
         return combined_queryset
     
     def list(self, request, *args, **kwargs):

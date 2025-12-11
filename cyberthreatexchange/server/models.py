@@ -13,7 +13,7 @@ from django.contrib.postgres.fields import ArrayField
 import stix2
 from stix2arango.stix2arango import Stix2Arango
 
-from cyberthreatexchange.worker.populate_dbs import setup_semantic_search_view
+from cyberthreatexchange.worker.populate_dbs import setup_arangodb, setup_semantic_search_view
 
 if typing.TYPE_CHECKING:
     from .. import settings
@@ -96,7 +96,7 @@ class Feed(models.Model):
         return super().save(*args, **kwargs)
 
     def generate_collection_name(self):
-        return "ctx_" + str(self.id).replace("-", "")
+        return self.collection_name or "ctx_" + str(self.id).replace("-", "")
 
     @property
     def edge_collection(self):
@@ -134,7 +134,7 @@ def create_collection(feed: Feed):
             objects=[feed.identity.dict],
         )
     )
-    setup_semantic_search_view()
+    setup_arangodb()
     
 def update_identities(feed: Feed):
     identity = feed.identity.dict
