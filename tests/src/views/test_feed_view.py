@@ -87,15 +87,13 @@ class TestFeedViewList:
             identity=identity2,
         )
         
-        response = client.get('/api/v1/feeds/', {'identity': str(identity.id)})
+        response = client.get('/api/v1/feeds/', {'identity_id': str(identity.id)})
         
         assert response.status_code == status.HTTP_200_OK
         assert 'feeds' in response.data
-        # All feeds should belong to the specified identity
-        for feed_data in response.data['feeds']:
-            assert feed_data['identity']['id'] == str(identity.id)
         
-        # Verify correct feed ID is returned and feed2 is not included
+        assert {f['identity']['id'] for f in response.data['feeds']} == {str(identity.id)}
+
         returned_ids = [f['id'] for f in response.data['feeds']]
         assert str(feed.id) in returned_ids
         assert str(feed2.id) not in returned_ids
