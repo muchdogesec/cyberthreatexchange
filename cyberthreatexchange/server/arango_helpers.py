@@ -576,10 +576,13 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
 
     @staticmethod
     def add_feed_id(objects):
+        feeds = dict(models.Feed.objects.all().values_list("collection_name", "id"))
         for obj in objects:
             collection_name, _, _ = obj.pop("_id").partition("/")
-            feed_uuid = collection_name.split("_")[1]
-            obj["x_ctx_feed_id  "] = str(uuid.UUID(feed_uuid))
+            collection_name = collection_name.removesuffix("_vertex_collection").removesuffix("_edge_collection")
+            feed_uuid = feeds.get(collection_name)
+            assert feed_uuid is not None, "Could not find feed for collection"
+            obj["x_ctx_feed_id"] = feed_uuid
 
     def remove_object(self, feed_id, obj_id: str):
         feed = models.Feed.objects.get(id=feed_id)

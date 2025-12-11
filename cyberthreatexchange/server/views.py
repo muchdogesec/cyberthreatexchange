@@ -68,6 +68,7 @@ class ChoiceCSVFilter(BaseCSVFilter):
     create=extend_schema(
         summary="Create an Identity",
         description="Create a new STIX Identity object.",
+        responses={201: serializers.IdentitySerializer, 400: DEFAULT_400_RESPONSE},
     ),
     partial_update=extend_schema(
         summary="Update an Identity",
@@ -112,20 +113,16 @@ class IdentityView(viewsets.ModelViewSet):  # Changed from ReadOnlyModelViewSet
 
     class filterset_class(FilterSet):
         name = CharFilter(
-            field_name="json_data__name",
             lookup_expr="icontains",
             help_text="Filter by identity name (case-insensitive, partial match).",
         )
-
-        class Meta:
-            model = models.Identity
-            fields = ["name"]
 
 
 @extend_schema_view(
     create=extend_schema(
         summary="Create a Feed",
         description="Create a new threat intelligence feed. A feed is a collection of STIX objects.",
+        responses={201: serializers.FeedSerializer, 400: DEFAULT_400_RESPONSE},
     ),
     list=extend_schema(
         summary="List Feeds",
@@ -171,10 +168,7 @@ class FeedView(viewsets.ModelViewSet):
     class filterset_class(FilterSet):
         name = CharFilter(lookup_expr="icontains")
         tags = BaseCSVFilter(field_name="tags", lookup_expr="contains")
-
-        class Meta:
-            model = models.Feed
-            fields = ["name", "tags", "identity"]
+        identity_id = BaseCSVFilter(lookup_expr="in")
 
     @extend_schema(
         summary="Add a STIX bundle to a feed",
@@ -595,6 +589,8 @@ class ObjectValueFilterSet(FilterSet):
                 location=OpenApiParameter.QUERY,
             ),
         ],
+        responses={200: serializers.ObjectValueSerializer, 400: DEFAULT_400_RESPONSE},
+        
     ),
 )
 class ObjectValueSearchView(mixins.ListModelMixin, viewsets.GenericViewSet):
