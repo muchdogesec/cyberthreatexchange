@@ -1,5 +1,7 @@
 # Cyber Threat Exchange
 
+[![codecov](https://codecov.io/gh/muchdogesec/cyberthreatexchange/graph/badge.svg?token=R2G4K4aTzM)](https://codecov.io/gh/muchdogesec/cyberthreatexchange)
+
 ## Overview
 
 Our ambition is to create a Cyber Threat Exchange that allows;
