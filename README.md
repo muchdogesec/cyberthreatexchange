@@ -1,4 +1,6 @@
-# stix2api
+# Cyber Threat Exchange
+
+[![codecov](https://codecov.io/gh/muchdogesec/cyberthreatexchange/graph/badge.svg?token=R2G4K4aTzM)](https://codecov.io/gh/muchdogesec/cyberthreatexchange)
 
 ## Overview
 
@@ -9,7 +11,7 @@ Our ambition is to create a Cyber Threat Exchange that allows;
 
 In order to that, we need a flexible, but structured way for producers to submit their intel and for users to explore it.
 
-stix2api is the core API that will support this.
+This is the core API that will support this.
 
 ## Why not just use the stix2 Python library
 
@@ -18,73 +20,50 @@ Our need for something more custom stems from two main requirements:
 1. We want to expose this via a web app
 2. We want to allows users to use custom objects/properties in a controlled way (via our [stix2extensions](https://github.com/muchdogesec/stix2extensions) repository)
  
-## Endpoints
+## Install
 
-### Global search
+### Download and configure
 
-* GET `search/`
-	* filters: `text`
-	* this endpoint is designed to be a simple search through all objects and properties to match string. It's main aim is to provide a basic search interface to retrieve objects (vs. very specific object searches)
+```shell
+# clone the latest code
+git clone https://github.com/muchdogesec/cyberthreatexchange
+```
 
-### Objects
+### Pre-requisites
 
-For each object type there will be the following available endpoints:
+**IMPORTANT**: ArangoDB and Postgres must be running. These are not deployed in the compose file.
 
-* GET `<STIX TYPE>/<OBJECT TYPE>` (e.g. `sdo/attack-pattern/`): Object search
-	* returns all objects that match the type and filters
-	* filters: for all properties defined in the core schema + any registered extensions in stix2extensions + pagination + visible_to (not for SCOs)
-	* note: this endpoint exists, because each type has lots of different property names to search on, so a global search is not super simple
-* GET `<STIX TYPE>/<OBJECT TYPE>/<ID>` (e.g. `sdo/attack-pattern/attack-pattern--3ce78b4c-273f-43ea-a2ba-a0755ba8e3c7`): Single object lookup
-	* has filters to define the specific version + visible_to (not for SCOs)
-* GET `<STIX TYPE>/<OBJECT TYPE>/<ID>/versions` (e.g. `sdo/attack-pattern/attack-pattern--3ce78b4c-273f-43ea-a2ba-a0755ba8e3c7/versions`: Version search
-	* returns a list of all versions of the object in the database
-	* filters: visible_to (not for SCOs)
-* GET `<STIX TYPE>/<OBJECT TYPE>/<ID>/bundle` (e.g. `sdo/attack-pattern/attack-pattern--3ce78b4c-273f-43ea-a2ba-a0755ba8e3c7/bundle`: Bundle generation
-	* returns a bundle of objects related to the one defined 
-	* filters: visible_to (not for SCOs), include_embedded, type
-* POST `<STIX TYPE>/<OBJECT TYPE>/<ID>`
-	* allows a user to add a new object
-* PATCH `<STIX TYPE>/<OBJECT TYPE>/<ID>`
+If you are not sure what you are doing here, [follow the basic setup steps here](https://community.dogesec.com/t/best-way-to-create-databases-for-obstracts/153/2).
 
-### Mass Upload
+### Configuration options
 
-* POST `bundle/`
+Cyber Threat Exchange has various settings that are defined in an `.env` file.
 
-#### A note on POST behaviour (for SDO/SRO/SCO types)
+To create a template for the file:
 
-* all objects will be validated against the core schema, and all registered property extensions for the object type
-	* if they do not conform (i.e. required values missing or incorrect properties/value types passed), the API will return 400 responses immediatley
-	* we lookup custom properties only if an extension defintion passed. The ED must be registered on the current main release of stix2extensions
-* user can pass any `created` and `modified` time
-* user can pass any `id` value
-	* if `id` conflicts return 403. Stating this object exists and should use PATCH
-* allow user to pass hidden properties (we should define the list of hidden properties needed)
+```shell
+cp .env.example .env
+```
 
-#### A note on POST behaviour (for SCO types)
+To see more information about how to set the variables, and what they do, read the `.env.markdown` file.
 
-* we should allow user to pass a hidden `_created_by_ref` property that can be used to control ownership
+### Build the Docker Image
 
-#### A note on PATCH behaviour (for SDO/SRO types)
+```shell
+sudo docker compose build
+```
 
-* user cannot modify `id`, `type`, `created`, `modified`, `created_by_ref` or `spec_version`
-* For SDO and SRO objects on all successful modifications the `modified` time will be automatically update to match the execution time of the change
+### Start the server
 
-#### A note on PATCH behaviour (for SCO types)
+```shell
+sudo docker compose up
+```
 
-* user cannot modify `id`, `type`, `_created_by_ref`
-* we should allow user to pass `_created_by_ref` in each request (optionally to validate ownership, and stop request if owner does not match `_created_by_ref` -- this is mainly to control edits of SCOs in web)
+### Access the server
 
-#### A note on bundle upload behaviour
+The webserver (Django) should now be running on: http://127.0.0.1:8007/
 
-* will store bundle id against notes of each object, note, this could be more than one bundle when object id updated more than one time
-* for bundle upload, all objects will be first parsed out, they will then one by one be added using the appropriate POST object endpoints
-* this will be considered as one job, if one or more objects in upload fail the job will continue. All successes and errors will be reported in the job individually so it is clear what objects failed (and why), and which uploaded successfully.
-
-### Jobs
-
-All POST and PATCH request will be tracked as jobs to highlight any errors on insert to db.
-
-We will expose `job/` and `job/<ID>` to allow user to get info of their requests,
+You can access the Swagger UI for the API in a browser at: http://127.0.0.1:8007/api/schema/swagger-ui/
 
 ## Support
 

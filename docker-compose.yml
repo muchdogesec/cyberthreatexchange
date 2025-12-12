@@ -1,0 +1,50 @@
+services:
+    env_django:
+        image: cyberthreatexchange
+        extra_hosts:
+            - "host.docker.internal:host-gateway"
+        build: .
+        volumes:
+            - .:/usr/src/app/
+            - ./www:/var/www/
+        environment:
+            - DJANGO_SETTINGS_MODULE=cyberthreatexchange.settings
+            - CELERY_BROKER_URL=redis://redis:6379/0
+            - result_backend=redis://redis:6379/1
+        env_file:
+            - ./.env
+        command: >
+                bash -c "
+                        python manage.py collectstatic --no-input &&
+                            python manage.py makemigrations &&
+                                python manage.py migrate
+                    "
+    django:
+        extends: env_django
+        command: >
+                bash -c "
+                    python -m cyberthreatexchange.worker.populate_dbs &&
+                            gunicorn cyberthreatexchange.wsgi:application  --reload --bind 0.0.0.0:8007
+                    " 
+        ports:
+            - 8007:8007
+        depends_on:
+            - celery
+        healthcheck:
+            test: ["CMD-SHELL", "curl http://localhost:8007/api/schema/"]
+            interval: 10s
+            retries: 5
+            start_period: 10s
+            timeout: 10s
+
+    celery:
+        extends: env_django
+        command: >
+                bash -c "
+                  celery -A cyberthreatexchange.worker worker -l INFO
+                  "
+        depends_on:
+            redis:
+                condition: service_started
+    redis:
+        image: "redis:alpine"
