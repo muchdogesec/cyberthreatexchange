@@ -59,24 +59,60 @@ class ChoiceCSVFilter(BaseCSVFilter):
 @extend_schema_view(
     list=extend_schema(
         summary="List Identities",
-        description="List all STIX Identity objects that can be used to create feeds.",
+        description=textwrap.dedent(
+            """
+            List all STIX Identity objects that can be used to create feeds.
+            """
+        ),
     ),
     retrieve=extend_schema(
         summary="Retrieve an Identity",
-        description="Retrieve a STIX Identity object by its ID.",
+        description=textwrap.dedent(
+            """
+            Retrieve a STIX Identity object by its ID.
+            """
+        ),
     ),
     create=extend_schema(
         summary="Create an Identity",
-        description="Create a new STIX Identity object.",
+        description=textwrap.dedent(
+            """
+            Upload a valid STIX Identity object.
+
+            The Identr
+
+            In order to create a feed, you must have a STIX Identity.
+            """
+        ),
         responses={201: serializers.IdentitySerializer, 400: DEFAULT_400_RESPONSE},
     ),
     partial_update=extend_schema(
         summary="Update an Identity",
-        description="Update an existing STIX Identity object.",
+        description=textwrap.dedent(
+            """
+            Update a STIX Identity object.
+
+            When an Identity object is updated, all references to this identity will point to the latest version you upload.
+
+            
+            IMPORTANT behaviour to be aware of:
+
+            * Bundles must contain valid STIX objects. If one object in the bundle is not valid, the whole import will fail. In such instances, no objects will be inserted into the feed.
+            * You can update objects in the feed using Bundle uploads. Ensure if they are SDOs or SROs that the `modified` times are higher than the old object already indexed or it won't be updated.
+            * On updates, you should also ensure the `created_by_ref`, `created`, `spec_version`, and `type` properties match the original exactly, otherwise this will cause issues. This won't cause the update to fail (nor will it be reported in the job as an issue), but will likely lead to downstream issues for consumers of your feed.
+            * If your bundle contains an SRO you must ensure that both the `source_ref` or `target_ref` either 1) exists in the bundle, OR 2) already exist in the feed. If either object is not present, the job will not fail, but the SRO will not be imported. Any failures like this will be reported in the Job.
+            """
+        ),
     ),
     destroy=extend_schema(
         summary="Delete an Identity",
-        description="Delete a STIX Identity object.",
+        description=textwrap.dedent(
+            """
+            Delete an Identity object.
+
+            IMPORTANT: if an Identity object is linked to a feed, you cannot delete it. You must delete the Feed first.
+            """
+        ),
     ),
 )
 class IdentityView(viewsets.ModelViewSet):  # Changed from ReadOnlyModelViewSet
@@ -107,38 +143,64 @@ class IdentityView(viewsets.ModelViewSet):  # Changed from ReadOnlyModelViewSet
             "identity_id",
             type=OpenApiTypes.UUID,
             location=OpenApiParameter.PATH,
-            description="The ID of the Identity object.",
+            description="The ID of the Identity object (e.g. `identity--643fea2b-5da6-47a9-9433-f8e97669f75b`)",
         )
     ]
 
     class filterset_class(FilterSet):
         name = CharFilter(
             lookup_expr="icontains",
-            help_text="Filter by identity name (case-insensitive, partial match).",
+            help_text="Filter by identity name (case-insensitive, partial match). e.g. `oge` would match `dogesec`, `DOGESEC`, etc.",
         )
 
 
 @extend_schema_view(
     create=extend_schema(
         summary="Create a Feed",
-        description="Create a new threat intelligence feed. A feed is a collection of STIX objects.",
+        description=textwrap.dedent(
+            """
+            Create a new Feed.
+
+            To create a Feed, you need to assign an Identity as the owner of the Feed. You must first create an Identity using the POST Identity endpoint.
+
+            Once created, you can start uploading intelligence (as STIX objects) to the Feed.
+            """
+        ),
         responses={201: serializers.FeedSerializer, 400: DEFAULT_400_RESPONSE},
     ),
     list=extend_schema(
         summary="List Feeds",
-        description="List all available threat intelligence feeds.",
+        description=textwrap.dedent(
+            """
+            List all available Feeds.
+            """
+        ),
     ),
     retrieve=extend_schema(
         summary="Retrieve a Feed",
-        description="Retrieve a specific threat intelligence feed by its ID.",
+        description=textwrap.dedent(
+            """
+            Get the metadata of the Feed.
+            """
+        ),
     ),
     partial_update=extend_schema(
         summary="Update a Feed",
-        description="Update a specific threat intelligence feed's metadata (name, description, tags). Corresponds to `PATCH /feed/{id}`.",
+        description=textwrap.dedent(
+            """
+            Update the metadata of the Feed.
+            """
+        ),
     ),
     destroy=extend_schema(
         summary="Delete a Feed",
-        description="Delete a specific threat intelligence feed and all its associated objects.",
+        description=textwrap.dedent(
+            """
+            Delete the feed and all STIX objects that are inside it.
+
+            IMPORTANT: it will not delete the Identity object listed as the creator of this feed.
+            """
+        ),
     ),
 )
 class FeedView(viewsets.ModelViewSet):
@@ -161,7 +223,7 @@ class FeedView(viewsets.ModelViewSet):
             "feed_id",
             type=OpenApiTypes.UUID,
             location=OpenApiParameter.PATH,
-            description="The ID of the Feed.",
+            description="The ID of the Feed (e.g. `32912db5-d79f-442e-b609-baac0e5ad9f3`)",
         )
     ]
 
@@ -174,8 +236,16 @@ class FeedView(viewsets.ModelViewSet):
         summary="Add a STIX bundle to a feed",
         description=textwrap.dedent(
             """
-            Allows a user to post a STIX bundle of objects to their feed.
-            This is an asynchronous operation. A job will be created to track the progress of the import.
+            Post a STIX bundle of objects to the feed.
+
+            This is an asynchronous operation. A job will be created to track the progress of the import. The response will contain the ID of the job.
+
+            IMPORTANT behaviour to be aware of:
+
+            * Bundles must contain valid STIX objects. If one object in the bundle is not valid, the whole import will fail. In such instances, no objects will be inserted into the feed.
+            * You can update objects in the feed using Bundle uploads. Ensure if they are SDOs or SROs that the `modified` times are higher than the old object already indexed or it won't be updated.
+            * On updates, you should also ensure the `created_by_ref`, `created`, `spec_version`, and `type` properties match the original exactly, otherwise this will cause issues. This won't cause the update to fail (nor will it be reported in the job as an issue), but will likely lead to downstream issues for consumers of your feed.
+            * If your bundle contains an SRO you must ensure that both the `source_ref` or `target_ref` either 1) exists in the bundle, OR 2) already exist in the feed. If either object is not present, the job will not fail, but the SRO will not be imported. Any failures like this will be reported in the Job.
             """
         ),
         request=serializers.BundleSerializer,
@@ -227,7 +297,13 @@ class FeedView(viewsets.ModelViewSet):
 @extend_schema_view(
     list=extend_schema(
         summary="List objects in a feed",
-        description="Allows a user to filter on all objects in a feed.",
+        description=textwrap.dedent(
+            """
+            Search an filter on all objects (SDOs, SCOs, SROs, and SMOs) found in this feed.
+
+            Due to differences between SDOs, SCOs, SROs, and SMOs, you can perform more advanced filtering for the STIX object type on `object/sdo`, `object/sco`, `object/sro` and `object/smo` endpoints.
+            """
+        ),
         parameters=[
             OpenApiParameter(
                 "types",
