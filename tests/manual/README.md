@@ -1,0 +1,29 @@
+
+
+## Add valid identity
+
+```shell
+curl -X 'POST' \
+  'http://localhost:8007/api/v1/identities/' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "type": "identity",
+    "spec_version": "2.1",
+    "id": "identity--9779a2db-f98c-5f4b-8d08-8ee04e02dbb5",
+    "created": "2020-01-01T00:00:00.000Z",
+    "modified": "2020-01-01T00:00:00.000Z",
+    "name": "dogesec",
+    "description": "https://github.com/muchdogesec/",
+    "identity_class": "organization",
+    "sectors": [
+        "technology"
+    ],
+    "contact_information": "https://www.dogesec.com/contact/",
+    "confidence": 100,
+    "object_marking_refs": [
+        "marking-definition--94868c89-83c2-464b-929b-a1a8aa3c8487",
+        "marking-definition--97ba4e8b-04f6-57e8-8f6e-3a0f0a7dc0fb"
+    ]
+}'
+```
