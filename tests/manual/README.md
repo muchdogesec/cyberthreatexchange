@@ -27,27 +27,3 @@ curl -X 'POST' \
     ]
 }'
 ```
-
-
-{
-  "identity_id": "identity--6cbf09b7-4a9a-456a-b42e-f2f32f6656ab",
-  "name": "test name",
-  "description": "test desc",
-  "short_description": "short desc",
-  "tags": [
-    "string"
-  ],
-  "categories": [
-    "other"
-  ]
-}
-
-
-
-
-{
-  "identity_id": "identity--6cbf09b7-4a9a-456a-b42e-f2f32f6656ab",
-  "name": "test name",
-  "description": "test desc",
-  "short_description": "short desc"
-}

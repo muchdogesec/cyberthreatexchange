@@ -79,7 +79,7 @@ class ChoiceCSVFilter(BaseCSVFilter):
             """
             Upload a valid STIX Identity object.
 
-            The Identr
+            The Identity object will be validated against the STIX specification.
 
             In order to create a feed, you must have a STIX Identity.
             """
@@ -93,14 +93,10 @@ class ChoiceCSVFilter(BaseCSVFilter):
             Update a STIX Identity object.
 
             When an Identity object is updated, all references to this identity will point to the latest version you upload.
-
             
             IMPORTANT behaviour to be aware of:
 
-            * Bundles must contain valid STIX objects. If one object in the bundle is not valid, the whole import will fail. In such instances, no objects will be inserted into the feed.
-            * You can update objects in the feed using Bundle uploads. Ensure if they are SDOs or SROs that the `modified` times are higher than the old object already indexed or it won't be updated.
-            * On updates, you should also ensure the `created_by_ref`, `created`, `spec_version`, and `type` properties match the original exactly, otherwise this will cause issues. This won't cause the update to fail (nor will it be reported in the job as an issue), but will likely lead to downstream issues for consumers of your feed.
-            * If your bundle contains an SRO you must ensure that both the `source_ref` or `target_ref` either 1) exists in the bundle, OR 2) already exist in the feed. If either object is not present, the job will not fail, but the SRO will not be imported. Any failures like this will be reported in the Job.
+            * 
             """
         ),
     ),
@@ -198,7 +194,7 @@ class IdentityView(viewsets.ModelViewSet):  # Changed from ReadOnlyModelViewSet
             """
             Delete the feed and all STIX objects that are inside it.
 
-            IMPORTANT: it will not delete the Identity object listed as the creator of this feed.
+            IMPORTANT: this request will not delete the Identity object listed as the creator of this feed.
             """
         ),
     ),
@@ -323,7 +319,11 @@ class FeedView(viewsets.ModelViewSet):
     ),
     sdos=extend_schema(
         summary="List SDOs in a feed",
-        description="Allows a user to filter on all objects in a feed.",
+        description=textwrap.dedent(
+            """
+            Search and filter on SDO objects in a feed.
+            """
+        ),
         parameters=[
             OpenApiParameter(
                 "types",
@@ -348,7 +348,11 @@ class FeedView(viewsets.ModelViewSet):
     ),
     smos=extend_schema(
         summary="List SMOs in a feed",
-        description="Allows a user to filter on all objects in a feed.",
+        description=textwrap.dedent(
+            """
+            Search and filter on SMO objects in a feed.
+            """
+        ),
         parameters=[
             OpenApiParameter(
                 "types",
@@ -368,7 +372,11 @@ class FeedView(viewsets.ModelViewSet):
     ),
     scos=extend_schema(
         summary="List SCOs in a feed",
-        description="Allows a user to filter on all objects in a feed.",
+        description=textwrap.dedent(
+            """
+            Search and filter on SCO objects in a feed.
+            """
+        ),
         parameters=[
             OpenApiParameter(
                 "types",
@@ -388,7 +396,11 @@ class FeedView(viewsets.ModelViewSet):
     ),
     sros=extend_schema(
         summary="List SROs in a feed",
-        description="Allows a user to filter on all objects in a feed.",
+        description=textwrap.dedent(
+            """
+            Search and filter on SRO objects in a feed.
+            """
+        ),
         parameters=[
             OpenApiParameter(
                 "types",
@@ -403,22 +415,40 @@ class FeedView(viewsets.ModelViewSet):
     ),
     retrieve=extend_schema(
         summary="Retrieve an object from a feed",
-        description="Retrieve a single STIX object from a feed by its ID.",
+        description=textwrap.dedent(
+            """
+            Retrieve a single STIX object from a feed by its ID
+            """
+        ),
         responses=serializers.StixObjectsPlaceholderSerializer,
     ),
     destroy=extend_schema(
         summary="Delete an object from a feed",
-        description="Allows a user to delete an object and its relationships from a feed. This is an asynchronous operation.",
+        description=textwrap.dedent(
+            """
+            Delete an object from a feed.
+
+            IMPORTANT: this request will also delete all SROs where the object being deleted is a `target_ref` or `source_ref`
+            """
+        ),
         responses={204: None},
     ),
     versions=extend_schema(
         summary="Get object versions from a feed",
-        description="Returns a list of all versions of the object in the database.",
+        description=textwrap.dedent(
+            """
+            Returns a list of all versions of the object in the database. You can then use the version returned on the GET objects endpoint to see the content for that version of the object.
+            """
+        ),
         responses=serializers.StixVersionsSerializer(),
     ),
     bundle=extend_schema(
         summary="Get bundle of related objects from a feed",
-        description="Get all objects directly related to the specified object within the feed.",
+        description=textwrap.dedent(
+            """
+            Get all objects directly related to the specified object within the feed.
+            """
+        ),
         responses=serializers.StixObjectsPlaceholderSerializer(many=True),
         filters=False,
     ),
@@ -794,8 +824,8 @@ class ObjectValueSearchView(mixins.ListModelMixin, viewsets.GenericViewSet):
         summary="Check if the service is running",
         description=textwrap.dedent(
             """
-        If this endpoint returns a 204, the service is running as expected.
-        """
+            If this endpoint returns a 204, the service is running as expected.
+            """
         ),
     ),
 )
