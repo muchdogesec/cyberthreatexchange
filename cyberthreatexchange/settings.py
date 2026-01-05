@@ -51,6 +51,7 @@ INSTALLED_APPS = [
     'dogesec_commons.objects',
     'drf_spectacular',
     'django.contrib.postgres',
+    'dogesec_commons.identity',
     'cyberthreatexchange.server',
 ]
 

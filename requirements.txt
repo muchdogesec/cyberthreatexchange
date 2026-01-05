@@ -58,7 +58,7 @@ djangorestframework==3.16.1
     #   -r requirements.in
     #   dogesec-commons
     #   drf-spectacular
-dogesec-commons==1.2.8
+dogesec-commons @https://github.com/muchdogesec/dogesec_commons/archive/fc02a4bd798d464cbdb69d65c328012d1ef36d5a.zip
     # via -r requirements.in
 drf-spectacular==0.29.0
     # via

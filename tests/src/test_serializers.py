@@ -15,7 +15,8 @@ from tests.src.data import (
     apt29_campaign,
     non_relationship_objects,
 )
-
+from stix2 import parse as parse_stix
+import uuid
 
 class TestStixObjectsPlaceholderSerializer:
     """Test StixObjectsPlaceholderSerializer."""
@@ -128,35 +129,13 @@ class TestJobDetailSerializer:
         assert "payload" in serializer.data
         assert serializer.data["payload"] == payload
 
-
-class TestIdentitySerializer:
-    def test_serializer_with_identity(self, identity):
-        serializer = serializers.IdentitySerializer(identity)
-        assert serializer.data["name"] == "Test Identity"
-        assert serializer.data["identity_class"] == "organization"
-        # Match the fixture ID from conftest.py
-        assert "identity--" in serializer.data["id"]
-
-    def test_serializer_create_identity(self):
-        data = {
-            "id": "identity--f6a7b8c9-d0e1-9f0a-3b4c-5d6e7f8a9b0c",
-            "name": "New Identity",
-            "identity_class": "individual",
-        }
-        serializer = serializers.IdentitySerializer(data=data)
-        assert serializer.is_valid()
-        identity = serializer.save()
-        assert identity.name == "New Identity"
-        assert identity.identity_class == "individual"
-
-
 class TestFeedSerializer:
     def test_serializer_with_feed(self, feed):
         """Test serialization of Feed instance."""
         serializer = serializers.FeedSerializer(feed)
         assert serializer.data["name"] == "Test Feed"
-        assert "identity" in serializer.data
-        assert serializer.data["identity"]["name"] == "Test Identity"
+        assert "identity_id" in serializer.data
+        assert serializer.data["identity_id"] == str(feed.identity.id)
         assert "collection_name" not in serializer.data
 
     def test_serializer_create_feed(self, identity):
@@ -306,7 +285,6 @@ class TestSTIXObjectSerializer:
 
 
 class TestBundleSerializer:
-
     def test_serializer_accepts_valid_bundle(self):
         bundle_data = {
             "type": "bundle",

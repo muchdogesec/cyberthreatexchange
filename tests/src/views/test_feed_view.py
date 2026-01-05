@@ -5,6 +5,8 @@ from rest_framework.response import Response
 from cyberthreatexchange.server import models, serializers
 from cyberthreatexchange.server.arango_helpers import ArangoDBHelper
 from tests.src.data import all_objects
+from tests.utils import create_identity
+
 
 
 class TestFeedViewList:
@@ -76,8 +78,8 @@ class TestFeedViewList:
     def test_list_filters_by_identity(self, client, feed, identity):
         """Test that list can filter by identity."""
         # Create another identity and feed
-        identity2 = models.Identity.objects.create(
-            id="b468283c-1ec0-4f6a-a904-898a56a6df38",
+        identity2 = create_identity(
+            id="identity--b468283c-1ec0-4f6a-a904-898a56a6df38",
             name="Other Identity",
             identity_class="individual",
         )
@@ -92,7 +94,7 @@ class TestFeedViewList:
         assert response.status_code == status.HTTP_200_OK
         assert 'feeds' in response.data
         
-        assert {f['identity']['id'] for f in response.data['feeds']} == {str(identity.id)}
+        assert {f['identity_id'] for f in response.data['feeds']} == {str(identity.id)}
 
         returned_ids = [f['id'] for f in response.data['feeds']]
         assert str(feed.id) in returned_ids

@@ -3,7 +3,7 @@ Pytest fixtures for testing.
 """
 
 import pytest
-from cyberthreatexchange.server import models
+from cyberthreatexchange.server import models, serializers
 from tests.src.data import non_relationship_objects, all_objects
 import time
 import pytest
@@ -12,16 +12,24 @@ from cyberthreatexchange.server.arango_helpers import ArangoDBHelper
 from cyberthreatexchange.server import models
 from cyberthreatexchange.worker.tasks import upload_bundle_task
 
+
 @pytest.fixture
 def identity():
     """Create a test identity (feed owner)."""
-    identity = models.Identity.objects.create(
-        id="identity--test-identity-123",
-        name="Test Identity",
-        identity_class="organization",
-        sectors=["technology"],
+    from dogesec_commons.identity.serializers import IdentitySerializer
+    identity_s = IdentitySerializer(
+        data=dict(
+            id="identity--73faab8f-9a95-4417-a2db-c1a8b73c7029",
+            name="Test Identity",
+            identity_class="organization",
+            sectors=["technology"],
+            created="2020-01-01T00:00:00.000Z",
+            modified="2020-01-01T00:00:00.000Z",
+        )
     )
-
+    identity_s.is_valid(raise_exception=True)
+    identity: models.Identity = identity_s.save()
+    identity.refresh_from_db()
     yield identity
 
 

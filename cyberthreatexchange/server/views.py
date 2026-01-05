@@ -51,6 +51,8 @@ from dogesec_commons.objects.helpers import SMO_TYPES
 from dogesec_commons.objects.helpers import SCO_TYPES
 from dogesec_commons.objects.helpers import SDO_TYPES
 
+from dogesec_commons.identity import views as identity_view, serializers as identity_serializers
+
 
 class ChoiceCSVFilter(BaseCSVFilter):
     field_class = ChoiceField
@@ -84,9 +86,8 @@ class ChoiceCSVFilter(BaseCSVFilter):
             In order to create a feed, you must have a STIX Identity.
             """
         ),
-        responses={201: serializers.IdentitySerializer, 400: DEFAULT_400_RESPONSE},
     ),
-    partial_update=extend_schema(
+    update=extend_schema(
         summary="Update an Identity",
         description=textwrap.dedent(
             """
@@ -111,43 +112,8 @@ class ChoiceCSVFilter(BaseCSVFilter):
         ),
     ),
 )
-class IdentityView(viewsets.ModelViewSet):  # Changed from ReadOnlyModelViewSet
-    """
-    A viewset for viewing Identities.
-    Identities are the owners of feeds.
-    """
-
-    http_method_names = [
-        "get",
-        "post",
-        "patch",
-        "delete",
-        "head",
-        "options",
-    ]  # Added for consistency with FeedView
-    openapi_tags = ["Identities"]
-    queryset = models.Identity.objects.all()
-    serializer_class = serializers.IdentitySerializer
-    pagination_class = Pagination("identities")
-    lookup_field = "id"
-    lookup_url_kwarg = "identity_id"
-    filter_backends = [DjangoFilterBackend, Ordering]
-    ordering_fields = ["created", "modified"]
-    ordering = "modified_descending"
-    openapi_path_params = [
-        OpenApiParameter(
-            "identity_id",
-            type=OpenApiTypes.UUID,
-            location=OpenApiParameter.PATH,
-            description="The ID of the Identity object (e.g. `identity--643fea2b-5da6-47a9-9433-f8e97669f75b`)",
-        )
-    ]
-
-    class filterset_class(FilterSet):
-        name = CharFilter(
-            lookup_expr="icontains",
-            help_text="Filter by identity name (case-insensitive, partial match). e.g. `oge` would match `dogesec`, `DOGESEC`, etc.",
-        )
+class IdentityView(identity_view.IdentityView):
+    pass
 
 
 @extend_schema_view(
@@ -204,7 +170,6 @@ class FeedView(viewsets.ModelViewSet):
     A viewset for managing Feeds.
     """
 
-    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
     openapi_tags = ["Feeds"]
     queryset = models.Feed.objects.all()
     serializer_class = serializers.FeedSerializer
@@ -459,7 +424,6 @@ class FeedObjectsView(viewsets.GenericViewSet):
     feed object operations separately from `FeedView`.
     """
 
-    http_method_names = ["get", "post", "delete", "head", "options"]
     openapi_tags = ["Feeds"]
     lookup_url_kwarg = "object_id"
     filter_backends = [DjangoFilterBackend]

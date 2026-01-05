@@ -13,6 +13,14 @@ from schemathesis.transport.wsgi import (
     REQUESTS_TRANSPORT,
 )
 
+from cyberthreatexchange.server import serializers
+
+def create_identity(**stix):
+    """Helper to create an Identity model from STIX data."""
+    from dogesec_commons.identity.serializers import IdentitySerializer
+    identity_serializer = IdentitySerializer(data=stix)
+    identity_serializer.is_valid(raise_exception=True)
+    return identity_serializer.save()
 
 class Transport(WSGITransport):
     def __init__(self):
