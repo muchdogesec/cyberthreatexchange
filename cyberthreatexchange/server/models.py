@@ -72,8 +72,9 @@ class Category(models.TextChoices):
     TTP = "ttp"
 
 
+
 class Feed(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, unique=True)
+    id = models.UUIDField(primary_key=True, unique=True)
     collection_name = models.CharField(max_length=200, unique=True)
     name = models.CharField(max_length=200)
     description = models.TextField(null=True, max_length=140)
@@ -91,7 +92,15 @@ class Feed(models.Model):
         blank=True,
     )
 
+    def calculate_id(self):
+        genid = self.id
+        if not self.id:
+            genid = uuid.uuid5(settings.FEED_NAMESPACE, f"{self.name}+{self.identity.id}")
+            self.id = genid
+        return genid
+
     def save(self, *args, **kwargs) -> None:
+        self.calculate_id()
         self.collection_name = self.generate_collection_name()
         return super().save(*args, **kwargs)
 
