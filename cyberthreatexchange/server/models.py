@@ -74,7 +74,7 @@ class Category(models.TextChoices):
 
 
 class Feed(models.Model):
-    id = models.UUIDField(primary_key=True, unique=True)
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, unique=True)
     collection_name = models.CharField(max_length=200, unique=True)
     name = models.CharField(max_length=200)
     description = models.TextField(null=True, max_length=140)
