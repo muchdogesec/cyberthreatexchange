@@ -155,11 +155,18 @@ class IdentityView(viewsets.ModelViewSet):  # Changed from ReadOnlyModelViewSet
         summary="Create a Feed",
         description=textwrap.dedent(
             """
-            Create a new Feed.
+            Use this endpoint to create a new Feed.
 
-            To create a Feed, you need to assign an Identity as the owner of the Feed. You must first create an Identity using the POST Identity endpoint.
+            The payload body accepts the following values:
 
-            Once created, you can start uploading intelligence (as STIX objects) to the Feed.
+            * `identity_id` (required): a full STIX Identity ID (e.g. `identity--643fea2b-5da6-47a9-9433-f8e97669f75b`). This Identity must already exist in the database. You can add Identities using the POST Identity endpoint.
+            * `name` (required): the name of the feed
+            * `description` (optional): a longer description of the feed
+            * `short_description` (optional): a shorter description of the feed. This exist mainly for CTX web
+            * `tags` (optional, list): tags for Feed. Can use alphanumeric characters and `-` only
+            * `categories` (optional, enum): default is `uncategorized`. Can select one or more of the following options: `other`,`apt_group`,`vulnerability`,`data_leak`,`malware`,`ransomware`,`infostealer`,`threat_actor`,`campaign`,`exploit`,`cyber_crime`,`indicator_of_compromise`,`ttp`
+            
+            Feed IDs are generated using UUIDv5s, using the Namespace `9779a2db-f98c-5f4b-8d08-8ee04e02dbb5` and values `<NAME>+<IDENTITY_ID` (e.g. `My Feed+identity--7d144535-be7d-4b40-a90b-eb7b0489d0c8` = `1d167752-481d-564e-9b05-e947614dbfa1`)
             """
         ),
         responses={201: serializers.FeedSerializer, 400: DEFAULT_400_RESPONSE},
@@ -185,6 +192,16 @@ class IdentityView(viewsets.ModelViewSet):  # Changed from ReadOnlyModelViewSet
         description=textwrap.dedent(
             """
             Update the metadata of the Feed.
+
+            The payload body accepts the following values:
+
+            * `name` (required): the name of the feed
+            * `description` (optional): a longer description of the feed
+            * `short_description` (optional): a shorter description of the feed. This exist mainly for CTX web
+            * `tags` (optional, list): tags for Feed. Can use alphanumeric characters and `-` only
+            * `categories` (optional, enum): default is `uncategorized`. Can select one or more of the following options: `other`,`apt_group`,`vulnerability`,`data_leak`,`malware`,`ransomware`,`infostealer`,`threat_actor`,`campaign`,`exploit`,`cyber_crime`,`indicator_of_compromise`,`ttp`
+            
+            You cannot change the `identity_id` assigned to a feed once it is created.
             """
         ),
     ),
