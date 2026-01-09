@@ -35,7 +35,8 @@ def handler500(*args, **kwargs):
 API_VERSION = "v1"
 
 router = routers.SimpleRouter(use_regex_path=False)
-router.register("identities", views.IdentityView, "identity-view")
+regex_router = routers.SimpleRouter(use_regex_path=True)
+regex_router.register("identities", views.IdentityView, "identity-view")
 router.register("jobs", views.JobView, "job-view")
 router.register("search", views.SearchView, "semantic-search-view")
 router.register("search/values", views.ObjectValueSearchView, "object-value-search-view")
@@ -47,6 +48,7 @@ healthcheck.register('', views.HealthCheckView, "service-status-view")
 urlpatterns = [
     path(f'api/healthcheck/', include(healthcheck.urls)),
     path(f'api/{API_VERSION}/', include(router.urls)),
+    path(f'api/{API_VERSION}/', include(regex_router.urls)),
     path('admin/', admin.site.urls),
     # YOUR PATTERNS
     path('api/schema/', views.SchemaViewCached.as_view(), name='schema'),

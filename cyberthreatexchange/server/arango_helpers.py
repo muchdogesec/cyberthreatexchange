@@ -7,7 +7,7 @@ from django.conf import settings
 from cyberthreatexchange.server.utils import Pagination, Response
 from drf_spectacular.utils import OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
-from dogesec_commons.objects.helpers import ArangoDBHelper as DSC_ArangoDBHelper
+from dogesec_commons.objects.helpers import ArangoDBHelper as DSC_ArangoDBHelper, SCO_TYPES
 from rest_framework import exceptions
 from cyberthreatexchange.server import models, utils
 from arango.database import StandardDatabase
@@ -147,6 +147,7 @@ ALL_SEARCH_TYPES = CAPEC_TYPES.union(
     ATLAS_TYPES,
     RELATIONSHIP_TYPES,
     ["report", "indicator"],
+    SCO_TYPES,
 )
 SEMANTIC_SEARCH_SORT_FIELDS = [
     "modified_descending",

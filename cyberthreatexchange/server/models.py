@@ -12,49 +12,12 @@ from django.db.models.signals import post_save, post_delete
 from django.contrib.postgres.fields import ArrayField
 import stix2
 from stix2arango.stix2arango import Stix2Arango
+from dogesec_commons.identity.models import Identity
 
 from cyberthreatexchange.worker.populate_dbs import setup_arangodb, setup_semantic_search_view
 
 if typing.TYPE_CHECKING:
     from .. import settings
-
-
-class IdentityIDField(models.CharField):
-    def pre_save(self, model_instance, add):
-        if add:
-            value = "identity--" + str(uuid.uuid4())
-            setattr(model_instance, self.attname, value)
-            return value
-        return super().pre_save(model_instance, add)
-
-
-class Identity(models.Model):
-    id = IdentityIDField(primary_key=True, max_length=64)
-    type = models.CharField(max_length=10, default="identity")
-    spec_version = models.CharField(max_length=3, default="2.1")
-
-    labels = ArrayField(
-        models.CharField(max_length=64), default=list, blank=True, null=True
-    )
-    created = models.DateTimeField(auto_now_add=True)
-    modified = models.DateTimeField(auto_now=True)
-
-    revoked = models.BooleanField(default=False)
-    confidence = models.IntegerField(null=True, blank=True)
-    lang = models.CharField(max_length=32, blank=True, null=True)
-
-    roles = models.JSONField(default=list, blank=True)
-    name = models.CharField(max_length=255)
-    description = models.TextField(blank=True, null=True)
-    identity_class = models.CharField(max_length=64)
-    sectors = ArrayField(models.CharField(max_length=64), default=list, blank=True)
-    contact_information = models.TextField(blank=True, null=True)
-
-    @property
-    def dict(self):
-        from .serializers import IdentitySerializer
-
-        return json.loads(stix2.parse(IdentitySerializer(self).data).serialize())
     
 class Category(models.TextChoices):
     OTHER = "other"
@@ -148,6 +111,7 @@ def create_collection(feed: Feed):
 def update_identities(feed: Feed):
     identity = feed.identity.dict
     identity["_record_modified"] = timezone.now().isoformat().replace("+00:00", "Z")
+    identity['_product_identity'] = True
     query = """
     FOR doc IN @@vertex_collection
     FILTER doc.id == @identity.id

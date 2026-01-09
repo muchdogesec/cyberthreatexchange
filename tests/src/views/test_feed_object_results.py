@@ -15,6 +15,8 @@ from tests.src.data import (
 from dogesec_commons.objects.helpers import SDO_TYPES, SCO_TYPES, SMO_TYPES
 from unittest.mock import patch
 
+from tests.utils import create_identity
+
 @pytest.fixture()
 def test_feed(arango_helper, disconnect_signals):
     """Create a feed that uses the same collections as arango_helper.
@@ -23,7 +25,7 @@ def test_feed(arango_helper, disconnect_signals):
     creates collections, we need to disable the signal and manually set collection_name.
     """
 
-    identity = models.Identity.objects.create(
+    identity = create_identity(
         id="identity--f3a5f413-0ccd-4821-9778-f4b70ecbb47f",
         name="Test Identity",
         identity_class="organization",
