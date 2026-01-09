@@ -64,6 +64,8 @@ class ChoiceCSVFilter(BaseCSVFilter):
         description=textwrap.dedent(
             """
             List all STIX Identity objects that can be used to create feeds.
+
+            This request will not return Identity objects that have been uploaded to Feeds.
             """
         ),
     ),
@@ -72,6 +74,8 @@ class ChoiceCSVFilter(BaseCSVFilter):
         description=textwrap.dedent(
             """
             Retrieve a STIX Identity object by its ID.
+
+            This request will not return Identity objects that have been uploaded to Feeds.
             """
         ),
     ),
@@ -83,7 +87,11 @@ class ChoiceCSVFilter(BaseCSVFilter):
 
             The Identity object will be validated against the STIX specification.
 
-            In order to create a feed, you must have a STIX Identity.
+            Some notes about Identity creation to be aware of
+
+            * The Identity object you submit will be unmodified in this request
+            * All properties will be validated against the STIX specification to ensure compliance. If validation fails, the object will not be updated.
+            * You can use custom properties. These will not be validated against any schema.
             """
         ),
     ),
@@ -97,17 +105,23 @@ class ChoiceCSVFilter(BaseCSVFilter):
             
             IMPORTANT behaviour to be aware of:
 
-            * 
+            * You cannot edit the following properties in this request: `id`, `spec_version`, `modified`, `created`, `type`
+            * On update, the `modified` time of the object will be updated to match the current time. The `created` date will remain the same
+            * All changes will be validated against the STIX specification to ensure compliance. If validation fails, the object will not be updated.
+            * Any properties not passed in this request will remain unchanged.
+            * You cannot modify an Identity uploaded to a Feed using this endpoint. You must update it using the Feed objects endpoints.
             """
         ),
     ),
     destroy=extend_schema(
-        summary="Delete an Identity",
+        summary="Delete an Identity and all its Feeds",
         description=textwrap.dedent(
             """
-            Delete an Identity object.
+            Delete an Identity object and ALL Feeds related to it.
 
-            IMPORTANT: if an Identity object is linked to a feed, you cannot delete it. You must delete the Feed first.
+            IMPORTANT: make sure this is the request you want to run. It will delete all data related to the Identity ID, including the Identity object, all Feeds belonging to the Identity object, and all objects within those feeds.
+
+            You cannot delete an Identity uploaded to a Feed using this endpoint. You must update it using the Feed objects endpoints.
             """
         ),
     ),
@@ -160,7 +174,7 @@ class IdentityView(identity_view.IdentityView):
             """
             Delete the feed and all STIX objects that are inside it.
 
-            IMPORTANT: this request will not delete the Identity object listed as the creator of this feed.
+            This request will not delete the Identity object listed as the creator of this feed. If you wish to delete all Feeds belonging to an Identity, use the DELETE Identity endpoint.
             """
         ),
     ),
