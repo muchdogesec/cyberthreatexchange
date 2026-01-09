@@ -1,5 +1,3 @@
-
-
 ## Add valid identity
 
 ```shell
@@ -27,3 +25,34 @@ curl -X 'POST' \
     ]
 }'
 ```
+
+## Create a Feed (min required data)
+
+```json
+{
+  "identity_id": "identity--9779a2db-f98c-5f4b-8d08-8ee04e02dbb5",
+  "name": "My basic feed"
+}
+```
+
+Expected ID `9779a2db-f98c-5f4b-8d08-8ee04e02dbb5` (`My basic feed+identity--9779a2db-f98c-5f4b-8d08-8ee04e02dbb5`) = `be8a67b0-c975-57ad-94b7-60f29d170e80`
+
+## Create a Feed (all data)
+
+```json
+{
+  "identity_id": "identity--9779a2db-f98c-5f4b-8d08-8ee04e02dbb5",
+  "name": "My full feed",
+  "description": "Long desc",
+  "short_description": "Short desc",
+  "tags": [
+    "tag-1"
+  ],
+  "categories": [
+    "apt_group",
+    "ttp"
+  ]
+}
+```
+
+Expected ID `9779a2db-f98c-5f4b-8d08-8ee04e02dbb5` (`My full feed+identity--9779a2db-f98c-5f4b-8d08-8ee04e02dbb5`) = `9fb026ee-8559-52c9-8d70-b19d4010d00e`
