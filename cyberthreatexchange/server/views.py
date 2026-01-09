@@ -627,6 +627,9 @@ class JobView(
 
     class filterset_class(FilterSet):
         feed_id = Filter("feed_id", label="Filter Jobs by Feed `id`")
+        identity_id = Filter(
+            "feed__identity_id", label="Filter Jobs by Feed's Identity `id`"
+        )
 
     def get_serializer_class(self):
         if self.action == "retrieve":
