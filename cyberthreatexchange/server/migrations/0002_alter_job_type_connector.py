@@ -15,7 +15,7 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='job',
             name='type',
-            field=models.CharField(choices=[('bundle-upload', 'Bundle Upload'), ('connector-pull', 'Connector Poll'), ('single-upload', 'Single Upload'), ('single-delete', 'Single Delete')]),
+            field=models.CharField(choices=[('bundle-upload', 'Bundle Upload'), ('connector-poll', 'Connector Poll'), ('single-upload', 'Single Upload'), ('single-delete', 'Single Delete')]),
         ),
         migrations.AddField(
             model_name='job',

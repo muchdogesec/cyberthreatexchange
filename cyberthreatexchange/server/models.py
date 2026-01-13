@@ -181,7 +181,7 @@ class ObjectValue(models.Model):
 
 class JobTypes(models.TextChoices):
     BUNDLE_UPLOAD  = "bundle-upload"
-    CONNECTOR_POLL = "connector-pull"
+    CONNECTOR_POLL = "connector-poll"
     SINGLE_UPLOAD  = "single-upload"
     SINGLE_DELETE  = "single-delete"
 
