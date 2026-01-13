@@ -42,6 +42,7 @@ router.register("search", views.SearchView, "semantic-search-view")
 router.register("search/values", views.ObjectValueSearchView, "object-value-search-view")
 router.register("feeds", views.FeedView, "feed-view")
 router.register("feeds/<feed_id>/objects", views.FeedObjectsView, "feed-objects-view")
+router.register("feeds/<feed_id>/connectors", views.ConnectorView, "connector-view")
 healthcheck = routers.SimpleRouter(use_regex_path=False)
 healthcheck.register('', views.HealthCheckView, "service-status-view")
 

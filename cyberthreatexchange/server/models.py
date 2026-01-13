@@ -13,6 +13,9 @@ from django.contrib.postgres.fields import ArrayField
 import stix2
 from stix2arango.stix2arango import Stix2Arango
 from dogesec_commons.identity.models import Identity
+from cryptography.fernet import Fernet
+import base64
+from django.core.exceptions import ImproperlyConfigured
 
 from cyberthreatexchange.worker.populate_dbs import setup_arangodb, setup_semantic_search_view
 
@@ -177,9 +180,10 @@ class ObjectValue(models.Model):
 
 
 class JobTypes(models.TextChoices):
-    BUNDLE_UPLOAD = "bundle-upload"
-    SINGLE_UPLOAD = "single-upload"
-    SINGLE_DELETE = "single-delete"
+    BUNDLE_UPLOAD  = "bundle-upload"
+    CONNECTOR_POLL = "connector-pull"
+    SINGLE_UPLOAD  = "single-upload"
+    SINGLE_DELETE  = "single-delete"
 
 
 class JobStates(models.TextChoices):
@@ -194,7 +198,92 @@ class Job(models.Model):
     type = models.CharField(choices=JobTypes.choices)
     state = models.CharField(choices=JobStates.choices)
     payload = models.JSONField(null=True, default=None)
+    extra = models.JSONField(null=True, default=None)
     errors = ArrayField(models.JSONField(), default=list, blank=True)
     warnings = ArrayField(models.JSONField(), default=list, blank=True)
     start_time = models.DateTimeField(auto_now_add=True)
     completion_time = models.DateTimeField(null=True, default=None)
+
+
+class ConnectorType(models.TextChoices):
+    TAXII = "taxii"
+
+
+def get_encryption_key():
+    """Get or generate encryption key from Django SECRET_KEY."""
+    secret = settings.SECRET_KEY.encode()
+    # Use the first 32 bytes of SECRET_KEY hash for Fernet key
+    from hashlib import sha256
+    key = base64.urlsafe_b64encode(sha256(secret).digest())
+    return key
+
+
+def encrypt_field(value: str) -> str:
+    if not value:
+        return value
+    f = Fernet(get_encryption_key())
+    return f.encrypt(value.encode()).decode()
+
+
+def decrypt_field(value: str) -> str:
+    if not value:
+        return value
+    f = Fernet(get_encryption_key())
+    return f.decrypt(value.encode()).decode()
+
+
+class Connector(models.Model):
+    """
+    Connector for pulling data from remote sources into feeds.
+    Currently supports TAXII 2.1 collections.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
+    feed = models.ForeignKey(Feed, on_delete=models.CASCADE, related_name='connectors')
+    name = models.CharField(max_length=200)
+    description = models.TextField(null=True, blank=True)
+    type = models.CharField(
+        max_length=50,
+        choices=ConnectorType.choices,
+        default=ConnectorType.TAXII,
+        editable=False
+    )
+    taxii_collection_url = models.URLField(max_length=500)
+    enc_user = models.TextField(null=True, blank=True)
+    enc_pass = models.TextField(null=True, blank=True)
+    last_completion_time = models.DateTimeField(null=True, blank=True)
+    next_run_added_after = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.name} ({self.feed.name})"
+
+    @property
+    def username(self):
+        """Decrypt and return username."""
+        if self.enc_user:
+            return decrypt_field(self.enc_user)
+        return None
+
+    @username.setter
+    def username(self, value):
+        if value is not None:
+            self.enc_user = encrypt_field(value)
+        else:
+            self.enc_user = None
+
+    @property
+    def password(self):
+        if self.enc_pass:
+            return decrypt_field(self.enc_pass)
+        return None
+
+    @password.setter
+    def password(self, value):
+        if value is not None:
+            self.enc_pass = encrypt_field(value)
+        else:
+            self.enc_pass = None
