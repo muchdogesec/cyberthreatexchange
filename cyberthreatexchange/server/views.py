@@ -65,6 +65,8 @@ class ChoiceCSVFilter(BaseCSVFilter):
             """
             List all STIX Identity objects that can be used to create feeds.
 
+            You can create an Identity using the POST Identities endpoint.
+
             This request will not return Identity objects that have been uploaded to Feeds.
             """
         ),
@@ -105,10 +107,10 @@ class ChoiceCSVFilter(BaseCSVFilter):
             
             IMPORTANT behaviour to be aware of:
 
-            * You cannot edit the following properties in this request: `id`, `spec_version`, `modified`, `created`, `type`
+            * You cannot edit the following properties in this request: `spec_version`, `modified`, `created`, `type`. You should pass the full identity object, but they will be ignored in processing.
+            * The `id` passed in the body must match the `id` passed in URL of the request.
             * On update, the `modified` time of the object will be updated to match the current time. The `created` date will remain the same
             * All changes will be validated against the STIX specification to ensure compliance. If validation fails, the object will not be updated.
-            * Any properties not passed in this request will remain unchanged.
             * You cannot modify an Identity uploaded to a Feed using this endpoint. You must update it using the Feed objects endpoints.
             """
         ),
