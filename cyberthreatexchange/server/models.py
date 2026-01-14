@@ -287,3 +287,15 @@ class Connector(models.Model):
             self.enc_pass = encrypt_field(value)
         else:
             self.enc_pass = None
+
+
+class UnprocessedRelationship(models.Model):
+    """
+    Store relationships that could not be processed due to missing referenced objects.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
+    job = models.ForeignKey(Job, on_delete=models.CASCADE)
+    stix_id = models.CharField(max_length=255)
+    target_ref = models.CharField(max_length=255)
+    source_ref = models.CharField(max_length=255)
+    stix_data = models.JSONField()
