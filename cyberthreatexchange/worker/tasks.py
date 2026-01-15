@@ -111,10 +111,7 @@ def poll_taxii_connector_task(job_id=None, connector_id=None, added_after=None):
     total_objects_imported = 0
     
     try:
-        session = requests.Session()
-        if connector.username and connector.password:
-            from requests.auth import HTTPBasicAuth
-            session.auth = HTTPBasicAuth(connector.username, connector.password)
+        session = connector.session()
 
         # Prepare filters for get_objects
         filters = {}
@@ -134,7 +131,7 @@ def poll_taxii_connector_task(job_id=None, connector_id=None, added_after=None):
             resp_data: dict = resp.json()
             objects = resp_data['objects']
             more = resp_data.get('more')
-
+            
             if not objects:
                 logging.info(f"No object in TAXII envelope. filters: {filters}")
                 continue
@@ -143,7 +140,7 @@ def poll_taxii_connector_task(job_id=None, connector_id=None, added_after=None):
             objects = remove_problematic_relationships(job, objects)
 
             logging.info(f"Retrieved {len(objects)} objects from TAXII collection page")
-            make_uploads(job_id, objects, {})
+            make_uploads(job_id, objects, {}, arango_extra={'_ctx_connector_id': str(connector_id)})
             total_objects_imported += len(objects)
             connector.next_run_added_after = parse_datetime(resp.headers['X-TAXII-Date-Added-Last'])
         relationships, warnings = rerun_relationship_uploads(job)
@@ -171,18 +168,16 @@ def remove_problematic_relationships(job: models.Job, objects):
     helper = ArangoDBHelper("", None)
     context = {}
     helper.build_context(context, objects, job.feed)
-    print(len(objects))
     retval: list = objects.copy()
     for i, warning in context.get('warnings', {}).items():
         if warning['type'] in ['missing_source', 'missing_target']:
             models.UnprocessedRelationship.objects.create(
                 job=job,
-                stix_id=warning["stix_id"],
-                relationship_type=warning["type"],
+                stix_id=warning["id"],
+                # relationship_type=warning["type"],
                 stix_data=objects[i],
             )
             retval.remove(objects[i])
-    print(len(retval))
     return retval
 
 def rerun_relationship_uploads(job: models.Job):
@@ -191,7 +186,7 @@ def rerun_relationship_uploads(job: models.Job):
     helper = ArangoDBHelper("", None)
     context = {}
     helper.build_context(context, objects, job.feed)
-    warned_ids = {warning["stix_id"] for warning in context.get('warnings', {}).values()}
+    warned_ids = {warning["id"] for warning in context.get('warnings', {}).values()}
     for r in relationships:
         if r.stix_id not in warned_ids:
             r.delete()

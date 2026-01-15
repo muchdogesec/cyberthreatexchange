@@ -42,9 +42,10 @@ def connector_job(feed, connector):
 class TestPollTaxiiConnectorTask:
     """Test poll_taxii_connector_task function."""
     
+    @patch('cyberthreatexchange.worker.tasks.rerun_relationship_uploads', return_value=([], {}))
     @patch('cyberthreatexchange.worker.tasks.make_uploads')
     @patch('requests.Session')
-    def test_poll_single_page_success(self, mock_session_class, mock_make_uploads, connector_job, connector):
+    def test_poll_single_page_success(self, mock_session_class, mock_make_uploads, mock_rerun, connector_job, connector):
         """Test polling a TAXII collection with a single page of results."""
         # Setup mock session
         mock_session = Mock()
@@ -79,12 +80,13 @@ class TestPollTaxiiConnectorTask:
         call_args = mock_session.get.call_args
         assert 'objects/' in call_args[0][0]
         
-        # Verify objects were uploaded
-        mock_make_uploads.assert_called_once()
-        upload_call = mock_make_uploads.call_args
-        assert upload_call[0][0] == connector_job.id  # job_id
-        assert len(upload_call[0][1]) == 2  # 2 objects
-        assert upload_call[1]['arango_extra'] == {'_ctx_connector_id': str(connector.id)}
+        # Verify objects were uploaded (called twice: once for objects, once for relationships)
+        assert mock_make_uploads.call_count == 2
+        # Check first call (objects)
+        first_call = mock_make_uploads.call_args_list[0]
+        assert first_call[0][0] == connector_job.id  # job_id
+        assert len(first_call[0][1]) == 2  # 2 objects
+        assert first_call[1]['arango_extra'] == {'_ctx_connector_id': str(connector.id)}
         
         # Verify job completed successfully
         connector_job.refresh_from_db()
@@ -97,9 +99,10 @@ class TestPollTaxiiConnectorTask:
         assert connector.next_run_added_after is not None
         assert connector.last_completion_time is not None
     
+    @patch('cyberthreatexchange.worker.tasks.rerun_relationship_uploads', return_value=([], {}))
     @patch('cyberthreatexchange.worker.tasks.make_uploads')
     @patch('requests.Session')
-    def test_poll_multiple_pages(self, mock_session_class, mock_make_uploads, connector_job, connector):
+    def test_poll_multiple_pages(self, mock_session_class, mock_make_uploads, mock_rerun, connector_job, connector):
         """Test polling with pagination (multiple pages)."""
         mock_session = Mock()
         mock_session_class.return_value = mock_session
@@ -149,8 +152,8 @@ class TestPollTaxiiConnectorTask:
         assert calls[1][1]['params'] == {'next': 'page2-token'}
         assert calls[2][1]['params'] == {'next': 'page3-token'}
         
-        # Verify make_uploads was called 3 times (once per page)
-        assert mock_make_uploads.call_count == 3
+        # Verify make_uploads was called 4 times (3 pages + 1 relationship)
+        assert mock_make_uploads.call_count == 4
         
         # Verify total objects imported
         connector_job.refresh_from_db()
@@ -162,8 +165,9 @@ class TestPollTaxiiConnectorTask:
         assert connector.next_run_added_after.isoformat() == '2024-01-15T12:00:00+00:00'
     
     @patch('cyberthreatexchange.worker.tasks.make_uploads')
+    @patch('cyberthreatexchange.worker.tasks.rerun_relationship_uploads', return_value=([], {}))
     @patch('requests.Session')
-    def test_poll_with_added_after_filter(self, mock_session_class, mock_make_uploads, connector_job, connector):
+    def test_poll_with_added_after_filter(self, mock_session_class, mock_make_uploads, mock_rerun, connector_job, connector):
         """Test polling with added_after filter."""
         mock_session = Mock()
         mock_session_class.return_value = mock_session
@@ -196,8 +200,9 @@ class TestPollTaxiiConnectorTask:
         assert connector_job.state == models.JobStates.COMPLETED
     
     @patch('cyberthreatexchange.worker.tasks.make_uploads')
+    @patch('cyberthreatexchange.worker.tasks.rerun_relationship_uploads', return_value=([], {}))
     @patch('requests.Session')
-    def test_poll_with_authentication(self, mock_session_class, mock_make_uploads, connector_job, connector):
+    def test_poll_with_authentication(self, mock_session_class, mock_make_uploads, mock_rerun, connector_job, connector):
         """Test that authentication credentials are used."""
         mock_session = Mock()
         mock_session_class.return_value = mock_session
@@ -224,9 +229,10 @@ class TestPollTaxiiConnectorTask:
         assert mock_session.auth.username == "testuser"
         assert mock_session.auth.password == "testpass"
     
+    @patch('cyberthreatexchange.worker.tasks.rerun_relationship_uploads', return_value=([], {}))
     @patch('cyberthreatexchange.worker.tasks.make_uploads')
     @patch('requests.Session')
-    def test_poll_without_authentication(self, mock_session_class, mock_make_uploads, connector_job, feed):
+    def test_poll_without_authentication(self, mock_session_class, mock_make_uploads, mock_rerun, connector_job, feed):
         """Test polling without authentication credentials."""
         # Create connector without credentials
         connector = models.Connector.objects.create(
@@ -259,9 +265,10 @@ class TestPollTaxiiConnectorTask:
         # Verify no auth was set
         assert mock_session.auth is None
     
+    @patch('cyberthreatexchange.worker.tasks.rerun_relationship_uploads', return_value=([], {}))
     @patch('cyberthreatexchange.worker.tasks.make_uploads')
     @patch('requests.Session')
-    def test_poll_empty_response(self, mock_session_class, mock_make_uploads, connector_job, connector):
+    def test_poll_empty_response(self, mock_session_class, mock_make_uploads, mock_rerun, connector_job, connector):
         """Test handling of empty TAXII response."""
         mock_session = Mock()
         mock_session_class.return_value = mock_session
@@ -282,8 +289,11 @@ class TestPollTaxiiConnectorTask:
             added_after=None,
         )
         
-        # Verify make_uploads was not called (no objects to upload)
-        mock_make_uploads.assert_not_called()
+        # Verify make_uploads was called only once for relationships (no objects to upload)
+        assert mock_make_uploads.call_count == 1
+        # Check it was called with empty relationships
+        call_args = mock_make_uploads.call_args
+        assert len(call_args[0][1]) == 0  # Empty relationships list
         
         # Verify job still completed successfully
         connector_job.refresh_from_db()
@@ -292,8 +302,9 @@ class TestPollTaxiiConnectorTask:
         if connector_job.extra is not None:
             assert 'objects_imported' not in connector_job.extra
     
+    @patch('cyberthreatexchange.worker.tasks.rerun_relationship_uploads', return_value=([], {}))
     @patch('requests.Session')
-    def test_poll_http_error(self, mock_session_class, connector_job, connector):
+    def test_poll_http_error(self, mock_session_class, mock_rerun, connector_job, connector):
         """Test handling of HTTP errors from TAXII server."""
         mock_session = Mock()
         mock_session_class.return_value = mock_session
@@ -318,8 +329,9 @@ class TestPollTaxiiConnectorTask:
         assert connector_job.completion_time is not None
     
     @patch('cyberthreatexchange.worker.tasks.make_uploads')
+    @patch('cyberthreatexchange.worker.tasks.rerun_relationship_uploads', return_value=([], {}))
     @patch('requests.Session')
-    def test_poll_network_error(self, mock_session_class, mock_make_uploads, connector_job, connector):
+    def test_poll_network_error(self, mock_session_class, mock_make_uploads, mock_rerun, connector_job, connector):
         """Test handling of network errors."""
         mock_session = Mock()
         mock_session_class.return_value = mock_session
@@ -341,8 +353,9 @@ class TestPollTaxiiConnectorTask:
         assert "Network unreachable" in connector_job.errors[0]
     
     @patch('cyberthreatexchange.worker.tasks.make_uploads')
+    @patch('cyberthreatexchange.worker.tasks.rerun_relationship_uploads', return_value=([], {}))
     @patch('requests.Session')
-    def test_poll_updates_feed_last_run(self, mock_session_class, mock_make_uploads, connector_job, connector, feed):
+    def test_poll_updates_feed_last_run(self, mock_session_class, mock_make_uploads, mock_rerun, connector_job, connector, feed):
         """Test that feed.last_run is updated after polling."""
         mock_session = Mock()
         mock_session_class.return_value = mock_session
@@ -373,8 +386,9 @@ class TestPollTaxiiConnectorTask:
             assert feed.last_run > initial_last_run
     
     @patch('cyberthreatexchange.worker.tasks.make_uploads')
+    @patch('cyberthreatexchange.worker.tasks.rerun_relationship_uploads', return_value=([], {}))
     @patch('requests.Session')
-    def test_poll_arango_extra_includes_connector_id(self, mock_session_class, mock_make_uploads, connector_job, connector):
+    def test_poll_arango_extra_includes_connector_id(self, mock_session_class, mock_rerun, mock_make_uploads, connector_job, connector):
         """Test that connector ID is passed to make_uploads in arango_extra."""
         mock_session = Mock()
         mock_session_class.return_value = mock_session
@@ -395,14 +409,16 @@ class TestPollTaxiiConnectorTask:
             added_after=None,
         )
         
-        # Verify arango_extra contains connector ID
-        mock_make_uploads.assert_called_once()
-        call_kwargs = mock_make_uploads.call_args[1]
+        # Verify arango_extra contains connector ID (check first call for objects)
+        assert mock_make_uploads.call_count == 2
+        first_call = mock_make_uploads.call_args_list[0]
+        call_kwargs = first_call[1]
         assert call_kwargs['arango_extra'] == {'_ctx_connector_id': str(connector.id)}
     
     @patch('cyberthreatexchange.worker.tasks.make_uploads')
+    @patch('cyberthreatexchange.worker.tasks.rerun_relationship_uploads', return_value=([], {}))
     @patch('requests.Session')
-    def test_poll_with_iso_string_added_after(self, mock_session_class, mock_make_uploads, connector_job, connector):
+    def test_poll_with_iso_string_added_after(self, mock_session_class, mock_make_uploads, mock_rerun, connector_job, connector):
         """Test that added_after as ISO string is handled correctly."""
         mock_session = Mock()
         mock_session_class.return_value = mock_session

@@ -422,41 +422,9 @@ class ConnectorView(viewsets.ModelViewSet):
     @decorators.action(detail=True, methods=["GET"], url_path="test-connection")
     def test_connection(self, request, feed_id=None, connector_id=None):
         connector = self.get_object()
-
-        import requests
-        from requests.auth import HTTPBasicAuth
-
-        try:
-            auth = None
-            if connector.username and connector.password:
-                auth = HTTPBasicAuth(connector.username, connector.password)
-
-            response = requests.get(
-                connector.taxii_collection_url,
-                auth=auth,
-                timeout=30,
-                headers={"Accept": "application/taxii+json;version=2.1"},
-            )
-
-            if response.status_code == 200:
-                result = {
-                    "success": True,
-                    "message": "Successfully connected to TAXII collection",
-                    "status_code": response.status_code,
-                }
-            else:
-                result = {
-                    "success": False,
-                    "message": f"Connection failed with status {response.status_code}",
-                    "status_code": response.status_code,
-                    "error": response.text,
-                }
-
-            return Response(result, status=status.HTTP_200_OK)
-
-        except requests.exceptions.RequestException as e:
-            result = {"success": False, "message": "Connection error", "error": str(e)}
-            return Response(result, status=status.HTTP_200_OK)
+        remote_info: dict = connector.remote_info
+        remote_info['success'] = 'error' not in remote_info
+        return Response(remote_info, status=status.HTTP_200_OK)
 
     @extend_schema(
         request=serializers.ConnectorPollSerializer,

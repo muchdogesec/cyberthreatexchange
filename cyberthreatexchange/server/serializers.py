@@ -219,21 +219,7 @@ class ConnectorSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Connector
-        fields = [
-            'id',
-            'name',
-            'description',
-            'type',
-            'taxii_collection_url',
-            'username',
-            'password',
-            'has_username',
-            'has_password',
-            'last_completion_time',
-            'next_run_added_after',
-            'created_at',
-            'updated_at',
-        ]
+        exclude = ["enc_user", "enc_pass", "feed"]
         read_only_fields = [
             'id',
             'type',
@@ -263,6 +249,9 @@ class ConnectorSerializer(serializers.ModelSerializer):
             connector.username = username
         if password:
             connector.password = password
+        
+        if remote_error := connector.remote_info.get('error'):
+            raise serializers.ValidationError({'error': 'update failed', 'response': connector.remote_info})
             
         connector.save()
         return connector
@@ -270,6 +259,10 @@ class ConnectorSerializer(serializers.ModelSerializer):
     def update(self, instance: Connector, validated_data):
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
+
+        if remote_error := instance.remote_info.get('error'):
+            raise serializers.ValidationError({'error': 'update failed', 'response': instance.remote_info})
+            
         instance.save()
         return instance
 
@@ -277,7 +270,7 @@ class ConnectorSerializer(serializers.ModelSerializer):
 class ConnectorTestSerializer(serializers.Serializer):
     """Serializer for test-connection response."""
     success = serializers.BooleanField()
-    message = serializers.CharField()
+    response = serializers.DictField()
     status_code = serializers.IntegerField(required=False)
     error = serializers.CharField(required=False)
 

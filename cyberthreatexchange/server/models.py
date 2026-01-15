@@ -288,6 +288,34 @@ class Connector(models.Model):
         else:
             self.enc_pass = None
 
+    def session(self):
+        import requests
+        session = requests.Session()
+        if self.username and self.password:
+            from requests.auth import HTTPBasicAuth
+            session.auth = HTTPBasicAuth(self.username, self.password)
+        return session
+    
+    @property
+    def remote_info(self):
+        response = None
+        try:
+            resp = self.session().get(self.taxii_collection_url)
+            data = dict(status_code=resp.status_code)
+            if resp.status_code == 200:
+                response = data['response'] = resp.json()
+            else:
+                data['error'] = resp.json()
+        except Exception as e:
+            data = dict(error=f'Connection error: {e}')
+        if response and not set(['title', 'can_read', 'can_write']).issubset(response):
+            data['error'] = 'Invalid TAXII collection response'
+        if 'error' not in data and not response['can_read']:
+            data['error'] = 'This collection does not support read (required)'
+        if data.get('can_write'):
+            data['warning'] = 'write permission is active for this user'
+        return data
+
 
 class UnprocessedRelationship(models.Model):
     """
