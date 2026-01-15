@@ -171,6 +171,8 @@ class IdentityView(identity_view.IdentityView):
         ),
     ),
     partial_update=extend_schema(
+        request=serializers.FeedPatchSerializer,
+        responses={201: serializers.FeedSerializer, 400: DEFAULT_400_RESPONSE},
         summary="Update a Feed",
         description=textwrap.dedent(
             """
@@ -203,6 +205,7 @@ class FeedView(viewsets.ModelViewSet):
     """
     A viewset for managing Feeds.
     """
+    http_method_names = ["get", "post", "patch", "delete"]
 
     openapi_tags = ["Feeds"]
     queryset = models.Feed.objects.all()

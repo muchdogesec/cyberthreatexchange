@@ -74,20 +74,16 @@ class FeedSerializer(serializers.ModelSerializer):
         queryset=Identity.objects.all(),
         source="identity",
         help_text="The UUID of the Identity object to associate with this feed.",
+        required=True,
     )
 
     class Meta:
         model = Feed
-        exclude = ["collection_name"]
+        exclude = ["collection_name", "identity"]
         read_only_fields = ["id", "created_at", "updated_at", "last_run"]
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # For PATCH, identity_id is not required. For POST, it is.
-        if self.instance:  # This is an update
-            self.fields["identity_id"].required = False
-        else:  # This is a create
-            self.fields["identity_id"].required = True
+class FeedPatchSerializer(FeedSerializer):
+    identity_id = None
 
 
 from rest_framework import serializers
@@ -250,7 +246,7 @@ class ConnectorSerializer(serializers.ModelSerializer):
         if password:
             connector.password = password
         
-        if remote_error := connector.remote_info.get('error'):
+        if connector.remote_info.get('error'):
             raise serializers.ValidationError({'error': 'update failed', 'response': connector.remote_info})
             
         connector.save()
@@ -260,7 +256,7 @@ class ConnectorSerializer(serializers.ModelSerializer):
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
 
-        if remote_error := instance.remote_info.get('error'):
+        if instance.remote_info.get('error'):
             raise serializers.ValidationError({'error': 'update failed', 'response': instance.remote_info})
             
         instance.save()
