@@ -184,6 +184,9 @@ class TestArangoDBHelperWithRealData:
             (
                 {},
                 {
+                    "autonomous-system--f91b6a7a-2e9c-4e5e-8e5e-5e5e5e5e5e5e",
+                    "ipv4-addr--ff26c055-6336-4bc6-b60e-6d2c7e6d5e5e",
+                    "mac-addr--a8b2c3d4-e5f6-4a5b-8c7d-9e8f7a6b5c4d",
                     "relationship--d0e1f2a3-b4c5-4d4e-bf8a-9b0c1d2e3f4a",
                     "relationship--c3d4e5f6-a7b8-4c7d-8e1f-2a3b4c5d6e7f",
                     "location--a6e9345f-5a54-4825-8b7e-9f4e5e5e5e5e",
@@ -240,13 +243,15 @@ class TestArangoDBHelperWithRealData:
                 ],
             ),
             (
-                {"stix_ids": "relationship--a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d,malware--d1c612bc-146f-4b65-b7b0-9a54a14150a4,indicator--8e2e2d2b-17d4-4cbf-938f-98ee46b3cd3f"},
+                {
+                    "stix_ids": "relationship--a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d,malware--d1c612bc-146f-4b65-b7b0-9a54a14150a4,indicator--8e2e2d2b-17d4-4cbf-938f-98ee46b3cd3f"
+                },
                 [
                     "malware--d1c612bc-146f-4b65-b7b0-9a54a14150a4",
                     "indicator--8e2e2d2b-17d4-4cbf-938f-98ee46b3cd3f",
-                    "relationship--a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d"
+                    "relationship--a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d",
                 ],
-            )
+            ),
         ],
     )
     def test_semantic_search_params(self, arango_helper, params, expected_ids):

@@ -70,6 +70,7 @@ class TestJobSerializer:
             "state": "completed",
             "errors": [],
             "start_time": serializer.data["start_time"],
+            "extra": None,
             "completion_time": None,
         }
 

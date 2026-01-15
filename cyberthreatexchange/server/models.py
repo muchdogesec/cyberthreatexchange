@@ -61,6 +61,7 @@ class Feed(models.Model):
     def calculate_id(self):
         genid = self.id
         if not self.id:
+            print(f"{self.name}+{self.identity.id}")
             genid = uuid.uuid5(settings.FEED_NAMESPACE, f"{self.name}+{self.identity.id}")
             self.id = genid
         return genid
