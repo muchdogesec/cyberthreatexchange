@@ -70,6 +70,7 @@ class TestJobSerializer:
             "state": "completed",
             "errors": [],
             "start_time": serializer.data["start_time"],
+            "extra": None,
             "completion_time": None,
         }
 
@@ -166,14 +167,6 @@ class TestFeedSerializer:
         serializer = serializers.FeedSerializer(data=data)
         assert not serializer.is_valid()
         assert "identity_id" in serializer.errors
-
-    def test_identity_id_optional_for_update(self, feed):
-        """Test that identity_id is optional when updating."""
-        data = {"description": "Updated description"}
-        serializer = serializers.FeedSerializer(feed, data=data, partial=True)
-        assert serializer.is_valid()
-        # identity_id should not be required
-        assert serializer.fields["identity_id"].required is False
 
 
 class TestSTIXObjectSerializer:

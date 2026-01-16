@@ -11,6 +11,7 @@ django>=5.2.1
 django-filter>=24.2
 django-cors-headers
 django-cleanup
+cryptography>=43.0.0
 
 ## dogesec
 dogesec_commons

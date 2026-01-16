@@ -1,14 +1,20 @@
 import logging
 from pathlib import Path
 import shutil
+from urllib.parse import urljoin
 
+import requests
+
+from cyberthreatexchange.server.arango_helpers import ArangoDBHelper
 from cyberthreatexchange.server.models import Job
 from cyberthreatexchange.server import models
+from datetime import datetime
 from celery import Task
 import tempfile
 import typing
 from django.utils import timezone
 from django.conf import settings
+from dateutil.parser import parse as parse_datetime
 
 from cyberthreatexchange.worker.utils import md5_hash
 from .celery import app
@@ -44,8 +50,24 @@ class CustomTask(Task):
 
 @app.task(base=CustomTask)
 def upload_bundle_task(job_id=None, warnings=None):
-    from cyberthreatexchange.server.values import save_object_values
+    job = Job.objects.get(pk=job_id)
+    make_uploads(job_id, job.payload.get('objects', []), warnings=warnings)
     
+    job.state = models.JobStates.COMPLETED
+    job.completion_time = timezone.now()
+    job.save()
+    job.feed.last_run = timezone.now()
+    job.feed.save(update_fields=['last_run'])
+
+
+from celery import signals
+@signals.worker_ready.connect
+def mark_old_jobs_as_failed(**kwargs):
+    Job.objects.filter(state=models.JobStates.PENDING).update(state = models.JobStates.FAILED, errors=["marked as failed on startup"])
+
+
+def make_uploads(job_id, objects, warnings=None):
+    from cyberthreatexchange.server.values import save_object_values
     job = Job.objects.get(pk=job_id)
     feed = job.feed
     s2a = Stix2Arango(
@@ -61,7 +83,7 @@ def upload_bundle_task(job_id=None, warnings=None):
     bundle = job.payload.copy()
     objects_to_process = []
     warnings = warnings or {}
-    for i, obj_it in enumerate(bundle.get('objects', [])):
+    for i, obj_it in enumerate(objects):
         obj = obj_it.copy()
         if i not in warnings:
             objects_to_process.append(obj)
@@ -73,22 +95,101 @@ def upload_bundle_task(job_id=None, warnings=None):
         id=bundle.get('id', f"bundle--{job.id}"),
         objects=objects_to_process
     ))
-    
     # Extract and save all object values to ObjectValue model
     try:
         created_count, deleted_count = save_object_values(objects_to_process, feed, str(feed.id))
         logging.info(f"Saved object values for bundle: created={created_count}, deleted={deleted_count}")
     except Exception as e:
         logging.error(f"Failed to save object values: {e}")
+
+@app.task(base=CustomTask)
+def poll_taxii_connector_task(job_id=None, connector_id=None, added_after=None):
     
-    job.state = models.JobStates.COMPLETED
-    job.completion_time = timezone.now()
-    job.save()
-    job.feed.last_run = timezone.now()
-    job.feed.save(update_fields=['last_run'])
+    job = Job.objects.get(pk=job_id)
+    connector = models.Connector.objects.get(pk=connector_id)
+    feed = connector.feed
+    total_objects_imported = 0
+    
+    try:
+        session = connector.session()
 
+        # Prepare filters for get_objects
+        filters = {}
+        if added_after:
+            if isinstance(added_after, datetime):
+                added_after = added_after.isoformat()
+            filters['added_after'] = added_after
 
-from celery import signals
-@signals.worker_ready.connect
-def mark_old_jobs_as_failed(**kwargs):
-    Job.objects.filter(state=models.JobStates.PENDING).update(state = models.JobStates.FAILED, errors=["marked as failed on startup"])
+        logging.info(f"Polling TAXII collection for connector {connector_id}")
+        more = True
+
+        while more:
+            resp = session.get(urljoin(connector.taxii_collection_url+'/', 'objects/'), params=filters)
+            if resp.status_code != 200:
+                raise Exception(f"Failed to retrieve TAXII collection: {resp.status_code} {resp.text}")
+            
+            resp_data: dict = resp.json()
+            objects = resp_data['objects']
+            more = resp_data.get('more')
+            
+            if not objects:
+                logging.info(f"No object in TAXII envelope. filters: {filters}")
+                continue
+            filters = {'next': resp_data.get('next')}
+
+            objects = remove_problematic_relationships(job, objects)
+
+            logging.info(f"Retrieved {len(objects)} objects from TAXII collection page")
+            make_uploads(job_id, objects, {}, arango_extra={'_ctx_connector_id': str(connector_id)})
+            total_objects_imported += len(objects)
+            connector.next_run_added_after = parse_datetime(resp.headers['X-TAXII-Date-Added-Last'])
+        relationships, warnings = rerun_relationship_uploads(job)
+        make_uploads(job_id, relationships, warnings)
+        connector.last_completion_time = timezone.now()
+        connector.save()
+        job.warnings = list(warnings.values())
+        job.state = models.JobStates.COMPLETED
+        logging.info(f"Successfully polled connector {connector_id}, imported {total_objects_imported} objects")
+        
+    except Exception as e:
+        job.state = models.JobStates.FAILED
+        job.errors.append(f"TAXII poll failed: {str(e)}")
+        logging.error(f"TAXII poll failed for connector {connector_id}: {e}", exc_info=True)
+    finally:
+        job.completion_time = timezone.now()
+        if total_objects_imported:
+            job.extra = job.extra or {}
+            job.extra['objects_imported'] = total_objects_imported
+        job.save()
+        feed.last_run = timezone.now()
+        feed.save(update_fields=['last_run'])
+
+def remove_problematic_relationships(job: models.Job, objects):
+    helper = ArangoDBHelper("", None)
+    context = {}
+    helper.build_context(context, objects, job.feed)
+    retval: list = objects.copy()
+    for i, warning in context.get('warnings', {}).items():
+        if warning['type'] in ['missing_source', 'missing_target']:
+            models.UnprocessedRelationship.objects.create(
+                job=job,
+                stix_id=warning["id"],
+                # relationship_type=warning["type"],
+                stix_data=objects[i],
+            )
+            retval.remove(objects[i])
+    return retval
+
+def rerun_relationship_uploads(job: models.Job):
+    relationships = list(models.UnprocessedRelationship.objects.filter(job=job))
+    objects = [rel.stix_data for rel in relationships]
+    helper = ArangoDBHelper("", None)
+    context = {}
+    helper.build_context(context, objects, job.feed)
+    warned_ids = {warning["id"] for warning in context.get('warnings', {}).values()}
+    for r in relationships:
+        if r.stix_id not in warned_ids:
+            r.delete()
+    return objects, context.get('warnings', {})
+
+    

@@ -3,11 +3,11 @@ import stix2
 import stix2.exceptions
 
 from cyberthreatexchange.server.arango_helpers import ArangoDBHelper
-from .models import Feed, Identity, Job, ObjectValue
+from .models import Feed, Identity, Job, ObjectValue, Connector
 from rest_framework import serializers, validators
 from dogesec_commons.utils.serializers import JSONSchemaSerializer
 
-from .models import Feed, Identity, Job, ObjectValue
+from .models import Feed, Identity, Job, ObjectValue, Connector
 from rest_framework import serializers, validators
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework.fields import get_error_detail
@@ -74,20 +74,16 @@ class FeedSerializer(serializers.ModelSerializer):
         queryset=Identity.objects.all(),
         source="identity",
         help_text="The UUID of the Identity object to associate with this feed.",
+        required=True,
     )
 
     class Meta:
         model = Feed
-        exclude = ["collection_name"]
+        exclude = ["collection_name", "identity"]
         read_only_fields = ["id", "created_at", "updated_at", "last_run"]
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # For PATCH, identity_id is not required. For POST, it is.
-        if self.instance:  # This is an update
-            self.fields["identity_id"].required = False
-        else:  # This is a create
-            self.fields["identity_id"].required = True
+class FeedPatchSerializer(FeedSerializer):
+    identity_id = None
 
 
 from rest_framework import serializers
@@ -172,6 +168,12 @@ class WarningAwareListField(serializers.ListField):
         if not errors:
             return result
         raise validators.ValidationError(errors)
+    
+    @staticmethod
+    def run_validation_with_warnings(objects, warnings):
+        context = {"warnings": warnings}
+        field = WarningAwareListField(child=STIXObjectSerializer(), context=context)
+        return field.run_validation(objects)
 
 
 class BundleSerializer(serializers.Serializer):
@@ -187,3 +189,92 @@ class BundleSerializer(serializers.Serializer):
             )
         # validate_stix(attrs)
         return attrs
+
+
+class ConnectorSerializer(serializers.ModelSerializer):
+    # Write-only fields for credentials
+    username = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        write_only=True,
+        help_text="Username for TAXII authentication (optional, stored encrypted)"
+    )
+    password = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        write_only=True,
+        style={'input_type': 'password'},
+        help_text="Password for TAXII authentication (optional, stored encrypted)"
+    )
+    
+    # Indicate if credentials are set (for GET requests)
+    has_username = serializers.SerializerMethodField()
+    has_password = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Connector
+        exclude = ["enc_user", "enc_pass", "feed"]
+        read_only_fields = [
+            'id',
+            'type',
+            'last_completion_time',
+            'next_run_added_after',
+            'created_at',
+            'updated_at',
+            'has_username',
+            'has_password',
+        ]
+
+    def get_has_username(self, obj):
+        return bool(obj.enc_user)
+
+    def get_has_password(self, obj):
+        return bool(obj.enc_pass)
+    
+
+    def create(self, validated_data):
+        """Handle creation with encrypted credentials."""
+        username = validated_data.pop('username', None)
+        password = validated_data.pop('password', None)
+        
+        connector = Connector(**validated_data)
+        
+        if username:
+            connector.username = username
+        if password:
+            connector.password = password
+        
+        if connector.remote_info.get('error'):
+            raise serializers.ValidationError({'error': 'update failed', 'response': connector.remote_info})
+            
+        connector.save()
+        return connector
+
+    def update(self, instance: Connector, validated_data):
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        if instance.remote_info.get('error'):
+            raise serializers.ValidationError({'error': 'update failed', 'response': instance.remote_info})
+            
+        instance.save()
+        return instance
+
+
+class ConnectorTestSerializer(serializers.Serializer):
+    """Serializer for test-connection response."""
+    success = serializers.BooleanField()
+    response = serializers.DictField()
+    status_code = serializers.IntegerField(required=False)
+    error = serializers.CharField(required=False)
+
+
+class ConnectorPollSerializer(serializers.Serializer):
+    """Serializer for poll action request."""
+    added_after = serializers.DateTimeField(
+        required=False,
+        allow_null=True,
+        help_text="Only retrieve objects added after this time. If not provided, uses next_run_added_after."
+    )

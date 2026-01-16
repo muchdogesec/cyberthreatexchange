@@ -51,7 +51,10 @@ from dogesec_commons.objects.helpers import SMO_TYPES
 from dogesec_commons.objects.helpers import SCO_TYPES
 from dogesec_commons.objects.helpers import SDO_TYPES
 
-from dogesec_commons.identity import views as identity_view, serializers as identity_serializers
+from dogesec_commons.identity import (
+    views as identity_view,
+    serializers as identity_serializers,
+)
 
 
 class ChoiceCSVFilter(BaseCSVFilter):
@@ -170,6 +173,8 @@ class IdentityView(identity_view.IdentityView):
         ),
     ),
     partial_update=extend_schema(
+        request=serializers.FeedPatchSerializer,
+        responses={201: serializers.FeedSerializer, 400: DEFAULT_400_RESPONSE},
         summary="Update a Feed",
         description=textwrap.dedent(
             """
@@ -202,6 +207,7 @@ class FeedView(viewsets.ModelViewSet):
     """
     A viewset for managing Feeds.
     """
+    http_method_names = ["get", "post", "patch", "delete"]
 
     openapi_tags = ["Feeds"]
     queryset = models.Feed.objects.all()
@@ -286,6 +292,185 @@ class FeedView(viewsets.ModelViewSet):
         helper = ArangoDBHelper("", None)
         feed = self.get_object()
         return helper.build_context(context, objects, feed)
+
+
+@extend_schema_view(
+    create=extend_schema(
+        summary="Create a Connector for a Feed",
+        description=textwrap.dedent(
+            """
+            Create a new connector to pull data from a remote TAXII 2.1 collection into a feed.
+
+            The connector will be associated with the specified feed and can be used to periodically poll the TAXII collection for new objects.
+
+            Credentials (username/password) are stored encrypted in the database.
+            """
+        ),
+        responses={201: serializers.ConnectorSerializer, 400: DEFAULT_400_RESPONSE},
+    ),
+    list=extend_schema(
+        summary="List Connectors for a Feed",
+        description=textwrap.dedent(
+            """
+            List all connectors configured for the specified feed.
+            """
+        ),
+    ),
+    retrieve=extend_schema(
+        summary="Retrieve a Connector",
+        description=textwrap.dedent(
+            """
+            Get details of a specific connector.
+            
+            Note: Credentials (username/password) are not returned in the response for security reasons. 
+            The response includes `has_username` and `has_password` boolean fields to indicate if credentials are set.
+            """
+        ),
+    ),
+    partial_update=extend_schema(
+        summary="Update a Connector",
+        description=textwrap.dedent(
+            """
+            Update a connector's configuration.
+
+            You can update the name, description, taxii_collection_url, and credentials.
+            
+            To remove credentials, pass an empty string for username or password.
+            """
+        ),
+    ),
+    destroy=extend_schema(
+        summary="Delete a Connector",
+        description=textwrap.dedent(
+            """
+            Delete a connector. This does not delete any data that was previously pulled from the connector.
+            """
+        ),
+    ),
+    test_connection=extend_schema(
+        summary="Test TAXII connection",
+        description=textwrap.dedent(
+            """
+            Test the connection to the TAXII collection URL.
+
+            This will attempt to connect to the TAXII server and verify that:
+            - The server is reachable
+            - Authentication credentials are valid (if provided)
+            - The collection endpoint returns a successful response
+
+            Returns a success status and HTTP status code.
+            """
+        ),
+    ),
+    poll=extend_schema(
+        summary="Poll TAXII collection for new objects",
+        description=textwrap.dedent(
+            """
+            Poll the TAXII collection and import new objects into the feed.
+
+            This is an asynchronous operation. A job will be created to track the progress of the poll and import.
+
+            Optional parameters:
+            - `added_after`: Only retrieve objects added after this timestamp. If not provided, uses the connector's `next_run_added_after` from the previous successful poll.
+
+            The connector's `next_run_added_after` and `last_completion_time` will be updated upon successful completion.
+            """
+        ),
+    ),
+)
+class ConnectorView(viewsets.ModelViewSet):
+    """
+    A viewset for managing Connectors within feeds.
+    """
+
+    openapi_tags = ["Connectors"]
+    serializer_class = serializers.ConnectorSerializer
+    pagination_class = Pagination("connectors")
+    lookup_field = "id"
+    lookup_url_kwarg = "connector_id"
+    filter_backends = [DjangoFilterBackend, Ordering]
+    ordering_fields = ["name", "created_at", "updated_at"]
+    ordering = "created_at_descending"
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
+
+    openapi_path_params = [
+        OpenApiParameter(
+            "feed_id",
+            type=OpenApiTypes.UUID,
+            location=OpenApiParameter.PATH,
+            description="The ID of the Feed",
+        ),
+        OpenApiParameter(
+            "connector_id",
+            type=OpenApiTypes.UUID,
+            location=OpenApiParameter.PATH,
+            description="The ID of the Connector",
+        ),
+    ]
+
+    def get_queryset(self):
+        return models.Connector.objects.filter(feed_id=self.kwargs.get("feed_id"))
+    
+    def get_serializer_context(self):
+        feed_id = self.kwargs.get("feed_id")
+        return {'feed': get_object_or_404(models.Feed, id=feed_id)}
+
+    def perform_create(self, serializer):
+        feed_id = self.kwargs.get("feed_id")
+        feed = get_object_or_404(models.Feed, id=feed_id)
+        serializer.save(feed=feed)
+
+    @extend_schema(
+        request=None,
+        responses={200: serializers.ConnectorTestSerializer, 400: DEFAULT_400_RESPONSE},
+    )
+    @decorators.action(detail=True, methods=["GET"], url_path="test-connection")
+    def test_connection(self, request, feed_id=None, connector_id=None):
+        connector = self.get_object()
+        remote_info: dict = connector.remote_info
+        remote_info['success'] = 'error' not in remote_info
+        return Response(remote_info, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        request=serializers.ConnectorPollSerializer,
+        responses={202: serializers.JobSerializer, 400: DEFAULT_400_RESPONSE},
+    )
+    @decorators.action(detail=True, methods=["POST"], url_path="poll")
+    def poll(self, request, feed_id=None, connector_id=None):
+        connector = self.get_object()
+
+        serializer = serializers.ConnectorPollSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        added_after = serializer.validated_data.get("added_after")
+        if not added_after:
+            added_after = connector.next_run_added_after
+
+        # Create a job to track the polling operation
+        job = models.Job.objects.create(
+            feed=connector.feed,
+            type=models.JobTypes.CONNECTOR_POLL,
+            state=models.JobStates.PENDING,
+            payload={
+                "connector_id": str(connector.id),
+                "added_after": added_after.isoformat() if added_after else None,
+            },
+        )
+
+        # Import and start the polling task
+        from cyberthreatexchange.worker.tasks import poll_taxii_connector_task
+
+        poll_taxii_connector_task.delay(
+            job_id=str(job.id),
+            connector_id=str(connector.id),
+            added_after=added_after.isoformat() if added_after else None,
+        )
+
+        job.state = models.JobStates.PROCESSING
+        job.save()
+
+        job_serializer = serializers.JobSerializer(job)
+        return Response(job_serializer.data, status=status.HTTP_202_ACCEPTED)
 
 
 @extend_schema_view(
@@ -475,6 +660,7 @@ class FeedObjectsView(viewsets.GenericViewSet):
         ),
     ]
     pagination_class = Pagination("objects")
+
     class filterset_class(FilterSet):
         stix_ids = BaseCSVFilter(lookup_expr="in", help_text="Filter by STIX IDs.")
 
@@ -482,25 +668,25 @@ class FeedObjectsView(viewsets.GenericViewSet):
         feed = get_object_or_404(models.Feed, id=feed_id)
         helper = ArangoDBHelper(feed.vertex_collection, request)
         return helper.semantic_search([feed.collection_name])
-    
+
     @decorators.action(detail=False, methods=["GET"])
     def sdos(self, request, feed_id=None):
         feed = get_object_or_404(models.Feed, id=feed_id)
         helper = ArangoDBHelper(feed.vertex_collection, request)
         return helper.semantic_search([feed.collection_name], valid_types=SDO_TYPES)
-    
+
     @decorators.action(detail=False, methods=["GET"])
     def scos(self, request, feed_id=None):
         feed = get_object_or_404(models.Feed, id=feed_id)
         helper = ArangoDBHelper(feed.vertex_collection, request)
         return helper.semantic_search([feed.collection_name], valid_types=SCO_TYPES)
-    
+
     @decorators.action(detail=False, methods=["GET"])
     def smos(self, request, feed_id=None):
         feed = get_object_or_404(models.Feed, id=feed_id)
         helper = ArangoDBHelper(feed.vertex_collection, request)
         return helper.semantic_search([feed.collection_name], valid_types=SMO_TYPES)
-    
+
     @decorators.action(detail=False, methods=["GET"])
     def sros(self, request, feed_id=None):
         SRO_TYPES = ["relationship"]
@@ -663,160 +849,172 @@ class SchemaViewCached(SpectacularAPIView):
 
 class ObjectValueFilterSet(FilterSet):
     """Filter set for ObjectValue search."""
+
     value = CharFilter(
-        field_name='value',
-        lookup_expr='icontains',
-        help_text='Search for values (full-text search)'
+        field_name="value",
+        lookup_expr="icontains",
+        help_text="Search for values (full-text search)",
     )
-    
+
     class Meta:
         model = models.ObjectValue
-        fields = ['value']
+        fields = ["value"]
 
 
 @extend_schema_view(
     list=extend_schema(
         summary="Search Object Values",
         description="Search STIX object values with reference resolution using full-text search. "
-                   "When searching by a value that matches a reference, objects containing that reference will also appear.",
+        "When searching by a value that matches a reference, objects containing that reference will also appear.",
         parameters=[
             OpenApiParameter(
-                name='feed_ids',
-                description='Comma-separated UUIDs of feeds to search within (optional, if omitted searches all feeds)',
+                name="feed_ids",
+                description="Comma-separated UUIDs of feeds to search within (optional, if omitted searches all feeds)",
                 required=False,
                 location=OpenApiParameter.QUERY,
             ),
             OpenApiParameter(
-                name='value',
-                description='Search term (full-text search)',
+                name="value",
+                description="Search term (full-text search)",
                 required=True,
                 location=OpenApiParameter.QUERY,
             ),
             OpenApiParameter(
-                name='show_older_versions',
-                description='If false (default), only return latest version of each object. If true, return all versions.',
+                name="show_older_versions",
+                description="If false (default), only return latest version of each object. If true, return all versions.",
                 required=False,
                 location=OpenApiParameter.QUERY,
             ),
         ],
         responses={200: serializers.ObjectValueSerializer, 400: DEFAULT_400_RESPONSE},
-        
     ),
 )
 class ObjectValueSearchView(mixins.ListModelMixin, viewsets.GenericViewSet):
     """
     Search endpoint for STIX object values.
-    
+
     Uses PostgreSQL full-text search (websearch) for better relevance and performance.
     When searching by a value that matches a reference:
     - Direct matches: Objects whose values match the search term
     - Reference matches: Objects that reference objects with matching values
-    
-    This enables transitive searching where searching for a malware name will also 
+
+    This enables transitive searching where searching for a malware name will also
     return campaigns that reference that malware.
-    
+
     Optional feed filtering:
     - If feed_ids provided: Only returns results found in those feeds
     - If feed_ids omitted: Returns results from all feeds
-    
+
     Version filtering:
     - If show_older_versions=false (default): Only latest modified version per stix_id
     - If show_older_versions=true: All versions returned
     """
-    
+
     openapi_tags = ["Search"]
     queryset = models.ObjectValue.objects.all()
     serializer_class = serializers.ObjectValueSerializer
     pagination_class = Pagination("values")
     filter_backends = [DjangoFilterBackend]
     filterset_class = ObjectValueFilterSet
-    
+
     def get_queryset(self):
         """Search with optional feed filtering and version control using full-text search."""
         from django.db.models import Q, Case, When, Value, IntegerField, F, Window, Max
         from django.db.models.functions import RowNumber
         from django.contrib.postgres.search import SearchVector, SearchQuery, SearchRank
-        
-        search_value = self.request.query_params.get('value', '').strip()
-        feed_ids_param = self.request.query_params.get('feed_ids', '').strip()
-        show_older_versions = self.request.query_params.get('show_older_versions', 'false').lower() == 'true'
-        
+
+        search_value = self.request.query_params.get("value", "").strip()
+        feed_ids_param = self.request.query_params.get("feed_ids", "").strip()
+        show_older_versions = (
+            self.request.query_params.get("show_older_versions", "false").lower()
+            == "true"
+        )
+
         if not search_value:
-            raise exceptions.ValidationError({'value': 'This field is required.'})
-        
+            raise exceptions.ValidationError({"value": "This field is required."})
+
         # Parse feed_ids if provided
         feed_ids_list = []
         if feed_ids_param:
-            feed_ids_list = [fid.strip() for fid in feed_ids_param.split(',') if fid.strip()]
+            feed_ids_list = [
+                fid.strip() for fid in feed_ids_param.split(",") if fid.strip()
+            ]
             # Validate feed IDs exist
             existing_feeds = models.Feed.objects.filter(id__in=feed_ids_list).count()
             if existing_feeds != len(feed_ids_list):
-                raise exceptions.ValidationError({'feed_ids': 'One or more feed IDs not found.'})
-        
+                raise exceptions.ValidationError(
+                    {"feed_ids": "One or more feed IDs not found."}
+                )
+
         # Start with base queryset
         queryset = models.ObjectValue.objects.all()
-        
+
         # Filter by feed_ids if provided
         if feed_ids_list:
             queryset = queryset.filter(feed_id__in=feed_ids_list)
-        
+
         # Pre-filter to only latest versions if needed (before search)
         if not show_older_versions:
             # Subquery to get the max modified per stix_id per feed
             from django.db.models import OuterRef, Subquery
-            max_modified_subquery = models.ObjectValue.objects.filter(
-                stix_id=OuterRef('stix_id'),
-                feed_id=OuterRef('feed_id')
-            ).values('stix_id', 'feed_id').annotate(
-                max_mod=Max('modified')
-            ).values('max_mod')
-            
+
+            max_modified_subquery = (
+                models.ObjectValue.objects.filter(
+                    stix_id=OuterRef("stix_id"), feed_id=OuterRef("feed_id")
+                )
+                .values("stix_id", "feed_id")
+                .annotate(max_mod=Max("modified"))
+                .values("max_mod")
+            )
+
             queryset = queryset.annotate(
                 max_modified=Subquery(max_modified_subquery)
-            ).filter(modified=F('max_modified'))
-        
+            ).filter(modified=F("max_modified"))
+
         # Split search value into individual words for independent matching
         search_words = [word.strip() for word in search_value.split() if word.strip()]
-        
+
         if not search_words:
-            raise exceptions.ValidationError({'value': 'No valid search terms provided.'})
-        
+            raise exceptions.ValidationError(
+                {"value": "No valid search terms provided."}
+            )
+
         # Build Q objects for icontains matching on each word
         from django.db.models import Q
+
         word_q = Q()
         for word in search_words:
             word_q |= Q(value__icontains=word)
-        
+
         # Get direct value matches using icontains
-        direct_matches = queryset.filter(
-            is_ref=False
-        ).filter(word_q).values('id')
-        
+        direct_matches = queryset.filter(is_ref=False).filter(word_q).values("id")
+
         # Get reference matches (objects that reference objects with matching values)
         # Step 1: Find all objects with values matching the search terms
-        matching_stix_ids = queryset.filter(
-            word_q
-        ).values_list('stix_id', flat=True).distinct()
-        
+        matching_stix_ids = (
+            queryset.filter(word_q).values_list("stix_id", flat=True).distinct()
+        )
+
         # Step 2: Find objects that reference those matching objects
         ref_matches = queryset.filter(
-            is_ref=True,
-            ref_stix_id__in=matching_stix_ids
-        ).values('id')
-        
+            is_ref=True, ref_stix_id__in=matching_stix_ids
+        ).values("id")
+
         # Combine all result sets
         combined_ids = direct_matches.union(ref_matches)
-        
+
         # Query back to get full model instances and sort by modified date
-        combined_queryset = models.ObjectValue.objects.filter(
-            id__in=combined_ids
-        ).order_by('-modified').distinct()
+        combined_queryset = (
+            models.ObjectValue.objects.filter(id__in=combined_ids)
+            .order_by("-modified")
+            .distinct()
+        )
         return combined_queryset
-    
+
     def list(self, request, *args, **kwargs):
         """List search results with relevance scoring."""
         return super().list(request, *args, **kwargs)
-    
+
 
 @extend_schema_view(
     list=extend_schema(
@@ -834,4 +1032,3 @@ class HealthCheckView(viewsets.ViewSet):
 
     def list(self, request, *args, **kwargs):
         return Response(status=status.HTTP_204_NO_CONTENT)
-

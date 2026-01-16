@@ -24,6 +24,8 @@ celery==5.5.3 ; python_version >= "3.8"
     # via -r requirements.in
 certifi==2025.11.12
     # via requests
+cffi==2.0.0
+    # via cryptography
 charset-normalizer==3.4.4
     # via requests
 click==8.3.1
@@ -38,6 +40,8 @@ click-plugins==1.1.1.2
     # via celery
 click-repl==0.3.0
     # via celery
+cryptography==46.0.3
+    # via -r requirements.in
 django==5.2.9
     # via
     #   -r requirements.in
@@ -97,6 +101,8 @@ psycopg2-binary==2.9.11
     # via
     #   -r requirements.in
     #   dogesec-commons
+pycparser==2.23
+    # via cffi
 pydantic==2.12.5
     # via stix2extensions
 pydantic-core==2.41.5
