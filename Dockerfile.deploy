@@ -1,0 +1,21 @@
+FROM python:3.11-slim
+ENV PYTHONUNBUFFERED=1
+
+ARG DJANGO_DEBUG=
+
+ENV DJANGO_DEBUG=${DJANGO_DEBUG}
+
+ENV MAX_PAGE_SIZE=500
+ENV DEFAULT_PAGE_SIZE=50
+ENV ARANGODB_USERNAME=cyberthreatexchange
+ENV ARANGODB_HOST_URL=http://host.docker.internal:8529
+ENV POSTGRES_USER=cyberthreatexchange
+ENV POSTGRES_DB=cyberthreatexchange_database
+ENV POSTGRES_HOST=host.docker.internal
+
+WORKDIR /usr/src/app
+COPY requirements.txt .
+RUN --mount=type=cache,target=/root/.cache \
+    pip install -r requirements.txt
+
+COPY . /usr/src/app
