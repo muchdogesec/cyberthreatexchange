@@ -93,11 +93,10 @@ from stix2.exceptions import STIXError
 
 def validate_stix(data):
     try:
-        stix2.parse(data)
+        stix2.parse(data, allow_custom=True)
     except STIXError as exc:
         raise serializers.ValidationError(f"Invalid STIX object: {exc}")
     except Exception as exc:
-        print(data)
         raise
 
 
