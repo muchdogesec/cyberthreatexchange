@@ -296,14 +296,26 @@ class FeedView(viewsets.ModelViewSet):
 
 @extend_schema_view(
     create=extend_schema(
-        summary="Create a Connector for a Feed",
+        summary="Create a TAXII 2.1 Connector for a Feed",
         description=textwrap.dedent(
             """
             Create a new connector to pull data from a remote TAXII 2.1 collection into a feed.
 
-            The connector will be associated with the specified feed and can be used to periodically poll the TAXII collection for new objects.
+            If you use a remote source (e.g. a Threat Intel Platform) to manage your intel, you can connect a Cyber Threat Exchange Feed to it so that it can poll the remote source for data.
 
-            Credentials (username/password) are stored encrypted in the database.
+            The connector will be associated with the specified feed and can be used to periodically poll the TAXII collection for new objects using the POST Connector Poll endpoint.
+
+            The following key / values are accepted in the body of this request:
+
+            * `username` (optional): not required if no authentication needed to access the feed (e.g. feed is public, do not include). Stored encrypted in the database.
+            * `password` (optional): not required if no authentication needed to access the feed (e.g. feed is public, do not include). Stored encrypted in the database.
+            * `name` (required): name of the Connector.
+            * `description` (optional): more info about the Connector to help you identify it.
+            * `taxii_collection_url` (required): pass the full collection URL (e.g. `https://taxii.obstracts.com/v2_1/obstracts_database/collections/the_cloudflare_blog_aee1ee27a4ba526d97e3c955ffc172d9/objects/`) Connectors do not have any TAXII discovery capabilties so you must pass the collection.
+
+            The `name` provided will be used to generate the UUID of the feed using the following logic; Namespace: `9779a2db-f98c-5f4b-8d08-8ee04e02dbb5`, Value: `<name>+<identity_id>` (e.g. `My basic feed+identity--9779a2db-f98c-5f4b-8d08-8ee04e02dbb5` = `2902eb6f-aa38-5e50-b56d-c85ebfb1e377`)
+
+            Important: the TAXII 2.1 server will be polled to test the connection. If anything other than a 200 response is returned using the configoration provided, the Connector will not be created and you will receive an error. This uses the same as the test connector endpoint.
             """
         ),
         responses={201: serializers.ConnectorSerializer, 400: DEFAULT_400_RESPONSE},
@@ -312,7 +324,9 @@ class FeedView(viewsets.ModelViewSet):
         summary="List Connectors for a Feed",
         description=textwrap.dedent(
             """
-            List all connectors configured for the specified feed.
+            List all connectors configured for the specified Feed. A Feed can have one or more Connectors. A Connector is unique to a Feed.
+
+            Important: Credentials (username/password) are not returned in the response for security reasons. The response includes `has_username` and `has_password` boolean fields to indicate if credentials are set.
             """
         ),
     ),
@@ -320,10 +334,9 @@ class FeedView(viewsets.ModelViewSet):
         summary="Retrieve a Connector",
         description=textwrap.dedent(
             """
-            Get details of a specific connector.
+            Get details of a specific connector configured for this feed.
             
-            Note: Credentials (username/password) are not returned in the response for security reasons. 
-            The response includes `has_username` and `has_password` boolean fields to indicate if credentials are set.
+            Important: Credentials (username/password) are not returned in the response for security reasons. The response includes `has_username` and `has_password` boolean fields to indicate if credentials are set.
             """
         ),
     ),
@@ -331,11 +344,16 @@ class FeedView(viewsets.ModelViewSet):
         summary="Update a Connector",
         description=textwrap.dedent(
             """
-            Update a connector's configuration.
+            Update a connectors configuration.
 
-            You can update the name, description, taxii_collection_url, and credentials.
+            The following key / values are accepted in the body of this request:
+
+            * `username` (optional): to remove, pass an empty value. Stored encrypted in the database.
+            * `password` (optional): to remove, pass an empty value. Stored encrypted in the database.
+            * `name` (required): name of the Connector. Note, changing this value will not change the UUID of the feed.
+            * `description` (optional): more info about the Connector to help you identify it.
             
-            To remove credentials, pass an empty string for username or password.
+            You cannot change the `taxii_collection_url` of a Connector. You must create a new Connector to change this value.
             """
         ),
     ),
@@ -354,9 +372,10 @@ class FeedView(viewsets.ModelViewSet):
             Test the connection to the TAXII collection URL.
 
             This will attempt to connect to the TAXII server and verify that:
-            - The server is reachable
-            - Authentication credentials are valid (if provided)
-            - The collection endpoint returns a successful response
+            
+            * The server is reachable
+            * Authentication credentials are valid (if provided)
+            * The collection endpoint returns a successful response
 
             Returns a success status and HTTP status code.
             """
@@ -366,12 +385,13 @@ class FeedView(viewsets.ModelViewSet):
         summary="Poll TAXII collection for new objects",
         description=textwrap.dedent(
             """
-            Poll the TAXII collection and import new objects into the feed.
+            This will poll the TAXII collection and import new objects into the feed.
 
             This is an asynchronous operation. A job will be created to track the progress of the poll and import.
 
-            Optional parameters:
-            - `added_after`: Only retrieve objects added after this timestamp. If not provided, uses the connector's `next_run_added_after` from the previous successful poll.
+            The following key / values are accepted in the body of this request:
+            
+            * `added_after` (optional): Only retrieve objects added after this timestamp. If not provided, uses the connector's `next_run_added_after` from the previous successful poll.
 
             The connector's `next_run_added_after` and `last_completion_time` will be updated upon successful completion.
             """
