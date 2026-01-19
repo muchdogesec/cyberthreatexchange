@@ -29,7 +29,7 @@ class Migration(migrations.Migration):
                 ('name', models.CharField(max_length=200)),
                 ('description', models.TextField(blank=True, null=True)),
                 ('type', models.CharField(choices=[('taxii', 'Taxii')], default='taxii', editable=False, max_length=50)),
-                ('taxii_collection_url', models.URLField(max_length=500)),
+                ('taxii_collection_url', models.URLField(max_length=500, editable=False)),
                 ('enc_user', models.TextField(blank=True, null=True)),
                 ('enc_pass', models.TextField(blank=True, null=True)),
                 ('last_completion_time', models.DateTimeField(blank=True, null=True)),
