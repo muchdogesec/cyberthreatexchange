@@ -248,7 +248,7 @@ class Connector(models.Model):
         default=ConnectorType.TAXII,
         editable=False
     )
-    taxii_collection_url = models.URLField(max_length=500)
+    taxii_collection_url = models.URLField(max_length=500, editable=False)
     enc_user = models.TextField(null=True, blank=True)
     enc_pass = models.TextField(null=True, blank=True)
     last_completion_time = models.DateTimeField(null=True, blank=True)
