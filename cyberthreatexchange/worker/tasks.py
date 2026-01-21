@@ -124,7 +124,7 @@ def poll_taxii_connector_task(job_id=None, connector_id=None, added_after=None):
         more = True
 
         while more:
-            resp = session.get(urljoin(connector.taxii_collection_url+'/', 'objects/'), params=filters)
+            resp = session.get(urljoin(connector.url+'/', 'objects/'), params=filters)
             if resp.status_code != 200:
                 raise Exception(f"Failed to retrieve TAXII collection: {resp.status_code} {resp.text}")
             

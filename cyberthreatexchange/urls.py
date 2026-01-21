@@ -20,7 +20,8 @@ from rest_framework import routers
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
 
-from cyberthreatexchange.server import views
+
+from cyberthreatexchange.server import views, connectors
 import dogesec_commons.objects.views as arango_views
 
 
@@ -42,7 +43,8 @@ router.register("search", views.SearchView, "semantic-search-view")
 router.register("search/values", views.ObjectValueSearchView, "object-value-search-view")
 router.register("feeds", views.FeedView, "feed-view")
 router.register("feeds/<feed_id>/objects", views.FeedObjectsView, "feed-objects-view")
-router.register("feeds/<feed_id>/connectors", views.ConnectorView, "connector-view")
+router.register("feeds/<feed_id>/connectors/taxii21", connectors.Taxii21ConnectorView, "taxii21-connector-view")
+router.register("feeds/<feed_id>/connectors", connectors.ConnectorView, "connector-view")
 healthcheck = routers.SimpleRouter(use_regex_path=False)
 healthcheck.register('', views.HealthCheckView, "service-status-view")
 

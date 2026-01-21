@@ -17,7 +17,7 @@ def connector(feed):
         feed=feed,
         name="Test TAXII Connector",
         type=models.ConnectorType.TAXII,
-        taxii_collection_url="https://example.com/taxii2/collections/123",
+        url="https://example.com/taxii2/collections/123",
         username="testuser",
         password="testpass",
     )
@@ -239,7 +239,7 @@ class TestPollTaxiiConnectorTask:
             feed=feed,
             name="Public TAXII Connector",
             type=models.ConnectorType.TAXII,
-            taxii_collection_url="https://example.com/taxii2/collections/public",
+            url="https://example.com/taxii2/collections/public",
         )
         
         mock_session = Mock()
