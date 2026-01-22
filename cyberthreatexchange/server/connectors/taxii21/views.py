@@ -45,6 +45,25 @@ from dogesec_commons.utils.schemas import DEFAULT_400_RESPONSE
         ),
         responses={201: Taxii21ConnectorSerializer, 400: DEFAULT_400_RESPONSE},
     ),
+    partial_update=extend_schema(
+        summary="Update a TAXII 2.1 Connector",
+        description=textwrap.dedent(
+            """
+            Update a connectors configuration.
+
+            The following key / values are accepted in the body of this request:
+
+            * `username` (optional): to remove, pass an empty value. Stored encrypted in the database.
+            * `password` (optional): to remove, pass an empty value. Stored encrypted in the database.
+            * `name` (required): name of the Connector. Note, changing this value will not change the UUID of the feed.
+            * `description` (optional): more info about the Connector to help you identify it.
+            
+            You cannot change the `url` of a Connector. You must create a new Connector to change this value.
+            """
+        ),
+        request=Taxii21ConnectorSerializer,  # or a dedicated update serializer if you have one
+        responses={200: Taxii21ConnectorSerializer, 400: DEFAULT_400_RESPONSE},
+    ),
 )
 class Taxii21ConnectorView(mixins.CreateModelMixin, mixins.UpdateModelMixin, ConnectorBaseView):
     """

@@ -117,26 +117,26 @@ class ConnectorBaseView(viewsets.GenericViewSet):
         ),
     ),
     test_connection=extend_schema(
-        summary="Test TAXII connection",
+        summary="Test source connection",
         description=textwrap.dedent(
             """
-            Test the connection to the TAXII collection URL.
+            Test the connection to the remote source.
 
-            This will attempt to connect to the TAXII server and verify that:
+            This will attempt to connect to the remote source and verify that:
             
             * The server is reachable
             * Authentication credentials are valid (if provided)
-            * The collection endpoint returns a successful response
+            * The response to get objects returns a successful response
 
-            Returns a success status and HTTP status code.
+            Returns a success status and HTTP status code from the remote source to help you debug.
             """
         ),
     ),
     poll=extend_schema(
-        summary="Poll TAXII collection for new objects",
+        summary="Poll source for new objects",
         description=textwrap.dedent(
             """
-            This will poll the TAXII collection and import new objects into the feed.
+            This will get the connector to poll the remote source and import new objects into the feed.
 
             This is an asynchronous operation. A job will be created to track the progress of the poll and import.
 
