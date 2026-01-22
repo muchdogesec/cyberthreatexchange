@@ -248,7 +248,7 @@ class Connector(models.Model):
         default=ConnectorType.TAXII,
         editable=False
     )
-    taxii_collection_url = models.URLField(max_length=500, editable=False)
+    url = models.URLField(max_length=500)
     enc_user = models.TextField(null=True, blank=True)
     enc_pass = models.TextField(null=True, blank=True)
     last_completion_time = models.DateTimeField(null=True, blank=True)
@@ -301,7 +301,7 @@ class Connector(models.Model):
     def remote_info(self):
         response = None
         try:
-            resp = self.session().get(self.taxii_collection_url)
+            resp = self.session().get(self.url)
             data = dict(status_code=resp.status_code)
             if resp.status_code == 200:
                 response = data['response'] = resp.json()

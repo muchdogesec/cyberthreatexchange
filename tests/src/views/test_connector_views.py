@@ -14,7 +14,7 @@ def connector(feed):
         feed=feed,
         name="Test TAXII Connector",
         description="A test connector for TAXII",
-        taxii_collection_url="https://example.com/taxii2/collections/12345/objects/",
+        url="https://example.com/taxii2/collections/12345/objects/",
     )
     connector.username = "test_user"
     connector.password = "test_pass"
@@ -31,7 +31,7 @@ class TestConnectorViewList:
             feed=feed,
             name="Second Connector",
             description="Another test connector",
-            taxii_collection_url="https://example.com/taxii2/collections/67890/objects/",
+            url="https://example.com/taxii2/collections/67890/objects/",
         )
         
         response = client.get(f'/api/v1/feeds/{feed.id}/connectors/')
@@ -55,7 +55,7 @@ class TestConnectorViewList:
             feed=feed2,
             name="Feed 2 Connector",
             description="Connector for feed 2",
-            taxii_collection_url="https://example.com/taxii2/collections/abc/objects/",
+            url="https://example.com/taxii2/collections/abc/objects/",
         )
         
         response = client.get(f'/api/v1/feeds/{feed.id}/connectors/')
@@ -81,17 +81,17 @@ class TestConnectorViewCreate:
         data = {
             'name': 'New Connector',
             'description': 'A new test connector',
-            'taxii_collection_url': 'https://example.com/taxii2/collections/test/objects/',
+            'url': 'https://example.com/taxii2/collections/test/objects/',
             'username': 'user123',
             'password': 'pass456',
         }
         
-        response = client.post(f'/api/v1/feeds/{feed.id}/connectors/', data, content_type='application/json')
+        response = client.post(f'/api/v1/feeds/{feed.id}/connectors/taxii21/', data, content_type='application/json')
         
         assert response.status_code == status.HTTP_201_CREATED, response.content
         assert response.data['name'] == 'New Connector'
         assert response.data['description'] == 'A new test connector'
-        assert response.data['taxii_collection_url'] == data['taxii_collection_url']
+        assert response.data['url'] == data['url']
         assert response.data['type'] == 'taxii'
         assert response.data['has_username'] is True
         assert response.data['has_password'] is True
@@ -110,10 +110,10 @@ class TestConnectorViewCreate:
         """Test creating connector without optional credentials."""
         data = {
             'name': 'Public Connector',
-            'taxii_collection_url': 'https://example.com/taxii2/collections/public/objects/',
+            'url': 'https://example.com/taxii2/collections/public/objects/',
         }
         
-        response = client.post(f'/api/v1/feeds/{feed.id}/connectors/', data, content_type='application/json')
+        response = client.post(f'/api/v1/feeds/{feed.id}/connectors/taxii21/', data, content_type='application/json')
         
         assert response.status_code == status.HTTP_201_CREATED
         assert response.data['has_username'] is False
@@ -126,27 +126,27 @@ class TestConnectorViewCreate:
     def test_create_connector_missing_required_fields(self, client, feed):
         """Test that creating connector without required fields fails."""
         data = {
-            # Missing name and taxii_collection_url
+            # Missing name and url
         }
         
-        response = client.post(f'/api/v1/feeds/{feed.id}/connectors/', data, content_type='application/json')
+        response = client.post(f'/api/v1/feeds/{feed.id}/connectors/taxii21/', data, content_type='application/json')
         
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         # Check that error response contains the missing fields
         response_json = response.json()
         assert 'details' in response_json
         assert 'name' in response_json['details']
-        assert 'taxii_collection_url' in response_json['details']
+        assert 'url' in response_json['details']
     
     def test_create_connector_for_nonexistent_feed(self, client):
         """Test creating connector for non-existent feed returns 404."""
         fake_feed_id = '00000000-0000-0000-0000-000000000000'
         data = {
             'name': 'Test Connector',
-            'taxii_collection_url': 'https://example.com/taxii2/collections/test/objects/',
+            'url': 'https://example.com/taxii2/collections/test/objects/',
         }
         
-        response = client.post(f'/api/v1/feeds/{fake_feed_id}/connectors/', data, content_type='application/json')
+        response = client.post(f'/api/v1/feeds/{fake_feed_id}/connectors/taxii21/', data, content_type='application/json')
         
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
@@ -162,7 +162,8 @@ class TestConnectorViewRetrieve:
         assert response.data['id'] == str(connector.id)
         assert response.data['name'] == connector.name
         assert response.data['description'] == connector.description
-        assert response.data['taxii_collection_url'] == connector.taxii_collection_url
+        assert response.data['url'] == connector.url
+        assert response.data['type'] == 'taxii'
         assert response.data['has_username'] is True
         assert response.data['has_password'] is True
         assert 'username' not in response.data
@@ -185,7 +186,7 @@ class TestConnectorViewUpdate:
         data = {'name': 'Updated Connector Name'}
         
         response = client.patch(
-            f'/api/v1/feeds/{feed.id}/connectors/{connector.id}/',
+            f'/api/v1/feeds/{feed.id}/connectors/taxii21/{connector.id}/',
             data,
             content_type='application/json'
         )
@@ -205,7 +206,7 @@ class TestConnectorViewUpdate:
         }
         
         response = client.patch(
-            f'/api/v1/feeds/{feed.id}/connectors/{connector.id}/',
+            f'/api/v1/feeds/{feed.id}/connectors/taxii21/{connector.id}/',
             data,
             content_type='application/json'
         )
@@ -225,7 +226,7 @@ class TestConnectorViewUpdate:
         }
         
         response = client.patch(
-            f'/api/v1/feeds/{feed.id}/connectors/{connector.id}/',
+            f'/api/v1/feeds/{feed.id}/connectors/taxii21/{connector.id}/',
             data,
             content_type='application/json'
         )
@@ -241,19 +242,19 @@ class TestConnectorViewUpdate:
     @patch('requests.Session.get', return_value=Mock(status_code=200, json=lambda: {'title': 'test', 'can_read': True, 'can_write': False}))
     def test_update_connector_url(self, mock_get, client, feed, connector):
         """Test updating connector TAXII URL."""
-        data = {'taxii_collection_url': 'https://new-example.com/taxii2/collections/new/objects/'}
+        data = {'url': 'https://new-example.com/taxii2/collections/new/objects/'}
         
         response = client.patch(
-            f'/api/v1/feeds/{feed.id}/connectors/{connector.id}/',
+            f'/api/v1/feeds/{feed.id}/connectors/taxii21/{connector.id}/',
             data,
             content_type='application/json'
         )
         
         assert response.status_code == status.HTTP_200_OK
-        assert response.data['taxii_collection_url'] == data['taxii_collection_url']
+        assert response.data['url'] == data['url']
         
         connector.refresh_from_db()
-        assert connector.taxii_collection_url == data['taxii_collection_url']
+        assert connector.url == data['url']
     
     def test_update_cannot_change_type(self, client, feed, connector):
         """Test that type field cannot be changed (it's read-only)."""
@@ -261,7 +262,7 @@ class TestConnectorViewUpdate:
         data = {'type': 'other'}
         
         response = client.patch(
-            f'/api/v1/feeds/{feed.id}/connectors/{connector.id}/',
+            f'/api/v1/feeds/{feed.id}/connectors/taxii21/{connector.id}/',
             data,
             content_type='application/json'
         )
@@ -439,7 +440,7 @@ class TestConnectorEncryption:
         connector = models.Connector.objects.create(
             feed=feed,
             name="Test Encryption",
-            taxii_collection_url="https://example.com/taxii2/collections/test/objects/",
+            url="https://example.com/taxii2/collections/test/objects/",
         )
         connector.username = "plaintext_user"
         connector.password = "plaintext_pass"
@@ -461,7 +462,7 @@ class TestConnectorEncryption:
         connector = models.Connector.objects.create(
             feed=feed,
             name="No Credentials",
-            taxii_collection_url="https://example.com/taxii2/collections/test/objects/",
+            url="https://example.com/taxii2/collections/test/objects/",
         )
         
         assert connector.enc_user is None
