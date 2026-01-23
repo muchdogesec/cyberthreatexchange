@@ -66,6 +66,22 @@ def mark_old_jobs_as_failed(**kwargs):
     Job.objects.filter(state=models.JobStates.PENDING).update(state = models.JobStates.FAILED, errors=["marked as failed on startup"])
 
 
+def get_existing_object_pks(feed, object_ids):
+    helper = ArangoDBHelper("", None)
+    query = """
+    FOR obj IN @@collection
+    FILTER obj.id IN @object_ids
+    RETURN KEEP(obj, "id", "_id", "_key", "_record_md5_hash")
+    """
+    bind_vars = {
+        "@collection": feed.vertex_collection,
+        "object_ids": object_ids,
+    }
+    result = helper.execute_query(query, bind_vars=bind_vars, paginate=False)
+    return result
+
+
+
 def make_uploads(job_id, objects, warnings=None):
     from cyberthreatexchange.server.values import save_object_values
     job = Job.objects.get(pk=job_id)
@@ -83,11 +99,18 @@ def make_uploads(job_id, objects, warnings=None):
     bundle = job.payload.copy()
     objects_to_process = []
     warnings = warnings or {}
+    relationship_refs = set()
     for i, obj_it in enumerate(objects):
         obj = obj_it.copy()
         if i not in warnings:
             objects_to_process.append(obj)
             obj['_record_md5_hash'] = md5_hash(obj)
+        if obj.get('type') == 'relationship':
+            relationship_refs.add(obj.get('source_ref'))
+            relationship_refs.add(obj.get('target_ref'))
+    # Ensure all referenced objects in relationships are included
+    existing_objects = get_existing_object_pks(feed, list(relationship_refs))
+    s2a.update_object_key_mapping(feed.vertex_collection, existing_objects)
     
     # Upload bundle to ArangoDB
     s2a.run(data=dict(
