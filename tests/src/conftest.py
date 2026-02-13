@@ -59,3 +59,17 @@ def job(feed):
     )
 
     yield job
+
+@pytest.fixture
+def with_hidden_properties():
+    """Fixture to patch ArangoDBHelper to include hidden properties in results."""
+    genric_query_fn = ArangoDBHelper.generic_query
+    with patch.object(ArangoDBHelper, "generic_query", autospec=True) as mock_generic_query:
+        def side_effect(self, *args, **kwargs):
+            # Call the original method to get the actual objects
+            kwargs['return_verb'] = 'doc'
+            original_objects = genric_query_fn(self, *args, **kwargs)
+            return original_objects
+        
+        mock_generic_query.side_effect = side_effect
+        yield
