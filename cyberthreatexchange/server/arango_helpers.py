@@ -410,6 +410,10 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
             search_filters.append(self.SEMANTIC_SEARCH_QUERY_TEXT)
             binds.update(search_param=search_param)
 
+        if updated_since := self.query.get("updated_since"):
+            extra_filters.append("FILTER doc._record_modified >= @updated_since")
+            binds.update(updated_since=updated_since)
+
         if name := self.query.get("name"):
             extra_filters.append("FILTER CONTAINS(LOWER(doc.name), @name_param)")
             binds.update(name_param=name.lower())

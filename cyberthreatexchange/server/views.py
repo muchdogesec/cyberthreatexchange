@@ -33,6 +33,7 @@ from django_filters.rest_framework import (
     BaseCSVFilter,
     CharFilter,
     BooleanFilter,
+    DateTimeFilter,
 )
 from django_filters.fields import ChoiceField
 from drf_spectacular.types import OpenApiTypes
@@ -483,6 +484,7 @@ class FeedObjectsView(viewsets.GenericViewSet):
 
     class filterset_class(FilterSet):
         stix_ids = BaseCSVFilter(lookup_expr="in", help_text="Filter by STIX IDs.")
+        updated_since = DateTimeFilter(help_text="Only return objects updated since the specified date. Format must be ISO8601 (e.g. `2020-01-01T00:00:00Z`)")
 
     def list(self, request, feed_id=None):
         feed = get_object_or_404(models.Feed, id=feed_id)

@@ -1,3 +1,4 @@
+import random
 import pytest
 from rest_framework import status
 from cyberthreatexchange.server import models
@@ -58,6 +59,25 @@ class TestFeedObjectsViewList:
         # The arango_helper fixture loads all_objects which contains 25 objects
         # (14 non-relationship objects + 11 relationships)
         assert len(response.data["objects"]) >= len(all_objects)
+
+    def test_list_updated_since_excludes(self, client, test_feed, with_hidden_properties, subtests):
+        """Objects modified before `updated_since` should be excluded."""
+        response = client.get(
+            f"/api/v1/feeds/{test_feed.id}/objects/"
+        )
+        objects = response.data["objects"]
+        assert len(objects) > 0, "No objects returned from list endpoint"
+        modified_dates = [obj['_record_modified'] for obj in objects]
+        for updated_since in set(random.choices(modified_dates, k=12)):
+            with subtests.test(updated_since=updated_since):
+                resp = client.get(
+                    f"/api/v1/feeds/{test_feed.id}/objects/?updated_since={updated_since}"
+                )
+                assert resp.status_code == status.HTTP_200_OK
+                assert len(resp.data["objects"]) > 0
+                assert all(
+                    obj['_record_modified'] >= updated_since for obj in resp.data["objects"]
+                )
 
 
 class TestFeedObjectsViewSDOs:
