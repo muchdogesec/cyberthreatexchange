@@ -168,6 +168,64 @@ class TestFeedSerializer:
         assert not serializer.is_valid()
         assert "identity_id" in serializer.errors
 
+    def test_unique_together_validation_on_name_field(self, feed):
+        """Test that duplicate name+identity raises error on name field."""
+        data = {
+            "name": feed.name,  # Same name as existing feed
+            "description": "Another feed with same name",
+            "identity_id": feed.identity.id,  # Same identity
+            "tags": ["duplicate"],
+        }
+        serializer = serializers.FeedSerializer(data=data)
+        assert not serializer.is_valid()
+        assert "name" in serializer.errors
+        assert "already exists" in str(serializer.errors["name"][0]).lower()
+
+    def test_unique_together_allows_same_name_different_identity(self, feed, identity):
+        """Test that same name with different identity is allowed."""
+        # Create a new identity
+        new_identity = models.Identity.objects.create(
+            stix=dict(name="Another Identity",identity_class="organization"),
+        )
+        data = {
+            "name": feed.name,  # Same name as existing feed
+            "description": "Feed with same name but different identity",
+            "identity_id": new_identity.id,  # Different identity
+            "tags": ["allowed"],
+        }
+        serializer = serializers.FeedSerializer(data=data)
+        assert serializer.is_valid()
+        new_feed = serializer.save()
+        assert new_feed.name == feed.name
+        assert new_feed.identity != feed.identity
+
+    def test_unique_together_allows_update_same_feed(self, feed):
+        """Test that updating a feed with same name+identity is allowed."""
+        data = {
+            "name": feed.name,  # Keep same name
+            "description": "Updated description",
+        }
+        serializer = serializers.FeedSerializer(feed, data=data, partial=True)
+        assert serializer.is_valid()
+        updated_feed = serializer.save()
+        assert updated_feed.description == "Updated description"
+
+    def test_unique_together_prevents_update_to_duplicate(self, feed):
+        """Test that updating to duplicate name+identity is prevented."""
+        # Create another feed with same identity
+        another_feed = models.Feed.objects.create(
+            name="Another Feed",
+            description="Different feed",
+            identity=feed.identity,
+        )
+        
+        # Try to update another_feed to have same name as feed
+        data = {"name": feed.name}
+        serializer = serializers.FeedSerializer(another_feed, data=data, partial=True)
+        assert not serializer.is_valid()
+        assert "name" in serializer.errors
+        assert "already exists" in str(serializer.errors["name"][0]).lower()
+
 
 class TestSTIXObjectSerializer:
     def serializer_with_context(self, context=None):
