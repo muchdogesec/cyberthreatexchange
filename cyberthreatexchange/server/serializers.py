@@ -12,6 +12,7 @@ from rest_framework import serializers, validators
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework.fields import get_error_detail
 
+
 class StixObjectsPlaceholderSerializer(serializers.Serializer):
     type = serializers.CharField()
     id = serializers.CharField()
@@ -68,6 +69,7 @@ class StixVersionsSerializer(serializers.Serializer):
     latest = serializers.DateTimeField(allow_null=True)
     versions = serializers.ListField(child=serializers.DateTimeField())
 
+
 class FeedSerializer(serializers.ModelSerializer):
     # identity = IdentitySerializer(read_only=True)
     identity_id = serializers.PrimaryKeyRelatedField(
@@ -81,6 +83,32 @@ class FeedSerializer(serializers.ModelSerializer):
         model = Feed
         exclude = ["collection_name", "identity"]
         read_only_fields = ["id", "created_at", "updated_at", "last_run"]
+
+    def validate(self, attrs):
+        # Check for unique together constraint on name and identity_id
+        # The field is sourced as 'identity' because of source='identity' in the field definition
+        identity = attrs.get("identity")
+        name = attrs.get("name")
+        
+        # During partial updates, get values from instance if not provided
+        if self.instance:
+            if not name:
+                name = self.instance.name
+            if not identity:
+                identity = self.instance.identity
+        
+        if identity and name:
+            queryset = Feed.objects.filter(name=name, identity=identity)
+            if self.instance:
+                queryset = queryset.exclude(pk=self.instance.pk)
+            
+            if queryset.exists():
+                raise serializers.ValidationError({
+                    "name": "Feed with this name and identity already exists."
+                })
+        
+        return attrs
+
 
 class FeedPatchSerializer(FeedSerializer):
     identity_id = None
@@ -167,7 +195,7 @@ class WarningAwareListField(serializers.ListField):
         if not errors:
             return result
         raise validators.ValidationError(errors)
-    
+
     @staticmethod
     def run_validation_with_warnings(objects, warnings):
         context = {"warnings": warnings}
