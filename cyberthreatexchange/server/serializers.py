@@ -66,7 +66,6 @@ class ObjectValueSerializer(serializers.ModelSerializer):
 
 
 class StixVersionsSerializer(serializers.Serializer):
-    latest = serializers.DateTimeField(allow_null=True)
     versions = serializers.ListField(child=serializers.DateTimeField())
 
 
