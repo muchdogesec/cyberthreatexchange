@@ -7,7 +7,10 @@ from django.conf import settings
 from cyberthreatexchange.server.utils import Pagination, Response
 from drf_spectacular.utils import OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
-from dogesec_commons.objects.helpers import ArangoDBHelper as DSC_ArangoDBHelper, SCO_TYPES
+from dogesec_commons.objects.helpers import (
+    ArangoDBHelper as DSC_ArangoDBHelper,
+    SCO_TYPES,
+)
 from rest_framework import exceptions
 from cyberthreatexchange.server import models, utils
 from arango.database import StandardDatabase
@@ -350,10 +353,12 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
     RETURN DISTINCT d.modified
 """
         return Response(
-            self.execute_query(
-                query,
-                bind_vars={"@view": self.semantic_search_view, "stix_id": stix_id},
-                paginate=False,
+            dict(
+                versions=self.execute_query(
+                    query,
+                    bind_vars={"@view": self.semantic_search_view, "stix_id": stix_id},
+                    paginate=False,
+                )
             )
         )
 
@@ -587,7 +592,9 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
         feeds = dict(models.Feed.objects.all().values_list("collection_name", "id"))
         for obj in objects:
             collection_name, _, _ = obj.pop("_id").partition("/")
-            collection_name = collection_name.removesuffix("_vertex_collection").removesuffix("_edge_collection")
+            collection_name = collection_name.removesuffix(
+                "_vertex_collection"
+            ).removesuffix("_edge_collection")
             feed_uuid = feeds.get(collection_name)
             # assert feed_uuid is not None, "Could not find feed for collection"
             obj["x_ctx_feed_id"] = feed_uuid

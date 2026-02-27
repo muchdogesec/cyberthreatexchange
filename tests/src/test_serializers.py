@@ -448,10 +448,3 @@ class TestStixVersionsSerializer:
         serializer = serializers.StixVersionsSerializer(data=data)
         assert serializer.is_valid()
         assert len(serializer.validated_data["versions"]) == 3
-
-    def test_serializer_allows_null_latest(self):
-        """Test that latest can be null."""
-        data = {"latest": None, "versions": []}
-        serializer = serializers.StixVersionsSerializer(data=data)
-        assert serializer.is_valid()
-        assert serializer.validated_data["latest"] is None

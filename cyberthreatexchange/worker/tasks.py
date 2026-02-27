@@ -82,7 +82,7 @@ def get_existing_object_pks(feed, object_ids):
 
 
 
-def make_uploads(job_id, objects, warnings=None):
+def make_uploads(job_id, objects, warnings=None, arango_extra=None):
     from cyberthreatexchange.server.values import save_object_values
     job = Job.objects.get(pk=job_id)
     feed = job.feed
@@ -100,11 +100,13 @@ def make_uploads(job_id, objects, warnings=None):
     objects_to_process = []
     warnings = warnings or {}
     relationship_refs = set()
+    arango_extra = arango_extra or {}
     for i, obj_it in enumerate(objects):
         obj = obj_it.copy()
         if i not in warnings:
             objects_to_process.append(obj)
             obj['_record_md5_hash'] = md5_hash(obj)
+            obj.update(arango_extra)
         if obj.get('type') == 'relationship':
             relationship_refs.add(obj.get('source_ref'))
             relationship_refs.add(obj.get('target_ref'))
@@ -145,6 +147,7 @@ def poll_taxii_connector_task(job_id=None, connector_id=None, added_after=None):
 
         logging.info(f"Polling TAXII collection for connector {connector_id}")
         more = True
+        extra_hidden_properties = {'_ctx_connector_id': str(connector_id)}
 
         while more:
             resp = session.get(urljoin(connector.url+'/', 'objects/'), params=filters)
@@ -163,11 +166,11 @@ def poll_taxii_connector_task(job_id=None, connector_id=None, added_after=None):
             objects = remove_problematic_relationships(job, objects)
 
             logging.info(f"Retrieved {len(objects)} objects from TAXII collection page")
-            make_uploads(job_id, objects, {}, arango_extra={'_ctx_connector_id': str(connector_id)})
+            make_uploads(job_id, objects, {}, arango_extra=extra_hidden_properties)
             total_objects_imported += len(objects)
             connector.next_run_added_after = parse_datetime(resp.headers['X-TAXII-Date-Added-Last'])
         relationships, warnings = rerun_relationship_uploads(job)
-        make_uploads(job_id, relationships, warnings)
+        make_uploads(job_id, relationships, warnings, arango_extra=extra_hidden_properties)
         connector.last_completion_time = timezone.now()
         connector.save()
         job.warnings = list(warnings.values())

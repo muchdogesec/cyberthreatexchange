@@ -109,7 +109,7 @@ class TestGetVersions:
         )
 
         assert response.status_code == 200
-        assert response.data == ["2020-01-15T10:00:00.000Z"]
+        assert response.data == dict(versions=["2020-01-15T10:00:00.000Z"])
 
 
 class TestGetExistingObjects:
