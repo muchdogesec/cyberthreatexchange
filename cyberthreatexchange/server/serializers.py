@@ -155,7 +155,7 @@ class STIXObjectSerializer(serializers.DictField):
                 f"'created' timestamp must match existing version ({existing_created})."
             )
 
-        if existing_modified and new_modified and new_modified <= existing_modified:
+        if existing_modified and new_modified and new_modified < existing_modified:
             errors["modified"] = (
                 f"'modified' timestamp must be strictly greater than existing version ({existing_modified})."
             )

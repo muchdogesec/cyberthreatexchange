@@ -656,7 +656,7 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
                     "resolution": "skipped",
                     "index": i,
                 }
-                objects.remove(obj)
+                obj_ids.remove(obj["id"])
             if obj["id"] in context["existing_objects"] and md5_hash(obj) == context[
                 "existing_objects"
             ][obj["id"]].get("_record_md5_hash"):
