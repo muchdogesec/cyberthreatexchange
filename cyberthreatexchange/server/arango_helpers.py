@@ -369,10 +369,10 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
         if not matches:
             raise exceptions.NotFound({"error": "No such object"})
 
-        if not self.query_as_bool("include_embedded_refs", True):
+        if not self.query_as_bool("show_embedded_refs", True):
             more_search_filters.append("d._is_ref != TRUE")
 
-        if not self.query_as_bool("include_embedded_sros", False):
+        if not self.query_as_bool("show_embedded_sros", False):
             late_filters.append("FILTER d._is_ref != TRUE")
 
         if types := self.query_as_array("types"):
@@ -427,6 +427,10 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
         if stix_ids := self.query_as_array("stix_ids"):
             binds["stix_ids"] = stix_ids
             search_filters.append("doc.id IN @stix_ids")
+            
+        show_embedded_refs = self.query_as_bool("show_embedded_refs", False)
+        if not show_embedded_refs:
+            extra_filters.append("FILTER doc._is_ref != TRUE")
 
         if value := self.query.get("value"):
             binds["search_value"] = value.lower()

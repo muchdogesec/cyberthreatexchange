@@ -208,6 +208,7 @@ class FeedView(viewsets.ModelViewSet):
     """
     A viewset for managing Feeds.
     """
+
     http_method_names = ["get", "post", "patch", "delete"]
 
     openapi_tags = ["Feeds"]
@@ -294,6 +295,7 @@ class FeedView(viewsets.ModelViewSet):
         feed = self.get_object()
         return helper.build_context(context, objects, feed)
 
+
 @extend_schema_view(
     list=extend_schema(
         summary="List objects in a feed",
@@ -313,11 +315,11 @@ class FeedView(viewsets.ModelViewSet):
                 style="form",
                 many=True,
             ),
-            # OpenApiParameter(
-            #     "text",
-            #     description="Filter the results by the `name` and `description` property of the object.",
-            #     type=OpenApiTypes.STR,
-            # ),
+            OpenApiParameter(
+                "show_embedded_refs",
+                description="If `true`, will include embedded refs. Default is `false`.",
+                type=OpenApiTypes.BOOL,
+            ),
         ],
         responses=serializers.StixObjectsPlaceholderSerializer(many=True),
     ),
@@ -453,6 +455,30 @@ class FeedView(viewsets.ModelViewSet):
             Get all objects directly related to the specified object within the feed.
             """
         ),
+        parameters=[
+            OpenApiParameter(
+                "show_embedded_refs",
+                description=textwrap.dedent(
+                    """
+                    If set to `false` (default), the response will only include the directly requested object, and will not include any embedded SROs that link it to other objects. If set to `true`, the response will include all directly related objects, and will represent the relationships between them using STIX embedded relationships.
+                    """
+                ),
+                type=OpenApiTypes.BOOL,
+            ),
+            OpenApiParameter(
+                "types",
+                description="Only show objects of selected types",
+                enum=ALL_SEARCH_TYPES,
+                explode=False,
+                style="form",
+                many=True,
+            ),
+            OpenApiParameter(
+                "show_embedded_sros",
+                type=OpenApiTypes.BOOL,
+                description="set to `true` to include the embedded relationships linking the objects. Setting to `false` (default) will still return the target object, but wont return the embedded SRO linking them. Set to `true` if your downstream software CANNOT interpret STIX embedded relationships",
+            ),
+        ],
         responses=serializers.StixObjectsPlaceholderSerializer(many=True),
         filters=False,
     ),
@@ -484,7 +510,9 @@ class FeedObjectsView(viewsets.GenericViewSet):
 
     class filterset_class(FilterSet):
         stix_ids = BaseCSVFilter(lookup_expr="in", help_text="Filter by STIX IDs.")
-        updated_since = DateTimeFilter(help_text="Only return objects updated since the specified date. Format must be ISO8601 (e.g. `2020-01-01T00:00:00Z`). We use this property instead of `modified` because SCOs do not have a modified time.")
+        updated_since = DateTimeFilter(
+            help_text="Only return objects updated since the specified date. Format must be ISO8601 (e.g. `2020-01-01T00:00:00Z`). We use this property instead of `modified` because SCOs do not have a modified time."
+        )
 
     def list(self, request, feed_id=None):
         feed = get_object_or_404(models.Feed, id=feed_id)
