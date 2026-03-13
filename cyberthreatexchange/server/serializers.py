@@ -31,7 +31,7 @@ class JobSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Job
-        exclude = ["payload", "warnings", "feed"]
+        exclude = ["payload", "warnings", "feed", "errors"]
 
 
 class JobDetailSerializer(serializers.ModelSerializer):

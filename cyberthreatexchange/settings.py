@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     'django.contrib.postgres',
     'dogesec_commons.identity',
     'cyberthreatexchange.server',
+    'django_apscheduler',
 ]
 
 MIDDLEWARE = [

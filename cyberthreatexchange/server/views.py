@@ -5,7 +5,6 @@ Views for the Cyber Threat Exchange server.
 import itertools
 import logging
 import textwrap
-from django.utils import timezone
 
 from cyberthreatexchange.worker.utils import md5_hash
 
@@ -251,7 +250,7 @@ class FeedView(viewsets.ModelViewSet):
             """
         ),
         request=serializers.BundleSerializer,
-        responses={202: serializers.JobSerializer},
+        responses={202: serializers.JobSerializer, 400: DEFAULT_400_RESPONSE},
     )
     @decorators.action(detail=True, methods=["POST"], url_path="bundle")
     def bundle(self, request, feed_id=None):
@@ -261,25 +260,18 @@ class FeedView(viewsets.ModelViewSet):
         job individually.
         """
         feed = self.get_object()
+        context = self.get_validation_context()
+        s = serializers.BundleSerializer(data=request.data, context=context)
+        s.is_valid(raise_exception=True)
+
         job = models.Job.objects.create(
             feed=feed,
             type=models.JobTypes.BUNDLE_UPLOAD,
-            state=models.JobStates.PENDING,
+            state=models.JobStates.PROCESSING,
             payload=request.data,
+            warnings=list(context["warnings"].values()) if context.get("warnings") else [],
         )
-        context = self.get_validation_context()
-        s = serializers.BundleSerializer(data=request.data, context=context)
-        try:
-            s.is_valid(raise_exception=True)
-            upload_bundle_task.delay(job_id=job.id, warnings=context.get("warnings"))
-            job.state = models.JobStates.PROCESSING
-        except exceptions.ValidationError as e:
-            job.errors.append(e.detail)
-            job.state = models.JobStates.FAILED
-            job.completion_time = timezone.now()
-        if context.get("warnings"):
-            job.warnings = list(context["warnings"].values())
-        job.save()
+        upload_bundle_task.delay(job_id=job.id, warnings=context.get("warnings"))
 
         job_serializer = serializers.JobSerializer(job)
         return Response(job_serializer.data, status=status.HTTP_202_ACCEPTED)
