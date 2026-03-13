@@ -68,7 +68,6 @@ class TestJobSerializer:
             "feed_id": "ec8fec0c-10d8-476f-8a51-0c71d94bbda7",
             "type": "bundle-upload",
             "state": "completed",
-            "errors": [],
             "start_time": serializer.data["start_time"],
             "extra": None,
             "completion_time": None,
