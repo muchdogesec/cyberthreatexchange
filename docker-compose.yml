@@ -24,7 +24,7 @@ services:
         command: >
                 bash -c "
                     python -m cyberthreatexchange.worker.populate_dbs &&
-                            gunicorn cyberthreatexchange.wsgi:application  --reload --bind 0.0.0.0:8007
+                            gunicorn cyberthreatexchange.wsgi:application --config gunicorn.conf.py --reload --bind 0.0.0.0:8007
                     " 
         ports:
             - 8007:8007

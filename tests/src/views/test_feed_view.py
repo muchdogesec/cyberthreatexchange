@@ -132,7 +132,7 @@ class TestFeedViewCreate:
             'tags': ['new', 'test'],
         }
         
-        response = client.post('/api/v1/feeds/', feed_data, format='json')
+        response = client.post('/api/v1/feeds/', feed_data, content_type='application/json')
         
         assert response.status_code == status.HTTP_201_CREATED
         assert response.data['name'] == 'New Feed'
@@ -151,7 +151,7 @@ class TestFeedViewCreate:
             'identity': str(identity.id),
         }
         
-        response = client.post('/api/v1/feeds/', feed_data, format='json')
+        response = client.post('/api/v1/feeds/', feed_data, content_type='application/json')
         
         assert response.status_code == status.HTTP_400_BAD_REQUEST
     
@@ -162,7 +162,7 @@ class TestFeedViewCreate:
             'description': 'Missing identity_id',
         }
         
-        response = client.post('/api/v1/feeds/', feed_data, format='json')
+        response = client.post('/api/v1/feeds/', feed_data, content_type='application/json')
         
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
@@ -175,7 +175,7 @@ class TestFeedViewCreate:
             'identity_id': str(identity.id),
         }
         
-        response = client.post('/api/v1/feeds/', feed_data, format='json')
+        response = client.post('/api/v1/feeds/', feed_data, content_type='application/json')
         
         assert response.status_code == status.HTTP_201_CREATED
         
@@ -235,7 +235,7 @@ class TestFeedViewUpdate:
         """Test that updating a non-existent feed returns 404."""
         update_data = {'name': 'Updated'}
         
-        response = client.patch('/api/v1/feeds/00000000-0000-0000-0000-000000000000/', update_data, format='json')
+        response = client.patch('/api/v1/feeds/00000000-0000-0000-0000-000000000000/', update_data, content_type='application/json')
         
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
@@ -281,16 +281,17 @@ class TestFeedViewBundle:
             'objects': all_objects[:5],  # Use first 5 objects from test data
         }
         
-        response = client.post(f'/api/v1/feeds/{feed.id}/bundle/', bundle_data, format='json')
+        response = client.post(f'/api/v1/feeds/{feed.id}/bundle/', bundle_data, content_type='application/json')
         
-        assert response.status_code == status.HTTP_202_ACCEPTED
+        assert response.status_code == status.HTTP_202_ACCEPTED, response.content
         assert 'id' in response.data
         assert response.data['type'] == models.JobTypes.BUNDLE_UPLOAD
         
-        # Verify job was created
+        # Verify job was created in processing state
         job = models.Job.objects.get(id=response.data['id'])
         assert str(job.feed.id) == str(feed.id)
         assert job.type == models.JobTypes.BUNDLE_UPLOAD
+        assert job.state == models.JobStates.PROCESSING
     
     def test_bundle_with_valid_data_starts_processing(self, client, feed):  
         """Test that a valid bundle doesn't fail validation."""
@@ -306,7 +307,7 @@ class TestFeedViewBundle:
                 mock_build_context.return_value = {'warnings': {}}
                 mock_is_valid.return_value = True
                 with patch('cyberthreatexchange.worker.tasks.upload_bundle_task.delay') as mock_task:
-                    response = client.post(f'/api/v1/feeds/{feed.id}/bundle/', bundle_data, format='json')
+                    response = client.post(f'/api/v1/feeds/{feed.id}/bundle/', bundle_data, content_type='application/json')
         
         assert response.status_code == status.HTTP_202_ACCEPTED
         
@@ -319,36 +320,33 @@ class TestFeedViewBundle:
         mock_task.assert_called_once()
     
     def test_bundle_with_invalid_data_fails(self, client, feed):
-        """Test that an invalid bundle fails validation."""
+        """Test that an invalid bundle returns 400 without creating a job."""
         bundle_data = {
             'type': 'bundle',
             'id': 'invalid-bundle-id',  # Invalid STIX ID format
             'objects': [],
         }
+        job_count_before = models.Job.objects.count()
         
-        response = client.post(f'/api/v1/feeds/{feed.id}/bundle/', bundle_data, format='json')
+        response = client.post(f'/api/v1/feeds/{feed.id}/bundle/', bundle_data, content_type='application/json')
         
-        assert response.status_code == status.HTTP_202_ACCEPTED
-        
-        # Verify job state is failed
-        job = models.Job.objects.get(id=response.data['id'])
-        assert job.state == models.JobStates.FAILED
-        assert len(job.errors) > 0
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        # No job should have been created
+        assert models.Job.objects.count() == job_count_before
     
     def test_bundle_without_objects_fails(self, client, feed):
-        """Test that a bundle without objects fails validation."""
+        """Test that a bundle without objects returns 400 without creating a job."""
         bundle_data = {
             'type': 'bundle',
             'id': 'bundle--d1c612bc-146f-4b65-b7b0-9a54a14150a4',
         }
+        job_count_before = models.Job.objects.count()
         
-        response = client.post(f'/api/v1/feeds/{feed.id}/bundle/', bundle_data, format='json')
+        response = client.post(f'/api/v1/feeds/{feed.id}/bundle/', bundle_data, content_type='application/json')
         
-        assert response.status_code == status.HTTP_202_ACCEPTED
-        
-        # Verify job exists and has errors
-        job = models.Job.objects.get(id=response.data['id'])
-        assert job.state == models.JobStates.FAILED
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        # No job should have been created
+        assert models.Job.objects.count() == job_count_before
     
     def test_bundle_validation_context_includes_feed(self, client, feed):
         """Test that bundle validation context includes feed information."""
@@ -361,7 +359,7 @@ class TestFeedViewBundle:
         with patch('cyberthreatexchange.server.arango_helpers.ArangoDBHelper.build_context') as mock_build_context:
             mock_build_context.return_value = {}
             
-            response = client.post(f'/api/v1/feeds/{feed.id}/bundle/', bundle_data, format='json')
+            response = client.post(f'/api/v1/feeds/{feed.id}/bundle/', bundle_data, content_type='application/json')
             
             # Verify build_context was called with correct parameters
             mock_build_context.assert_called_once()
@@ -384,7 +382,7 @@ class TestFeedViewGetValidationContext:
         with patch('cyberthreatexchange.server.arango_helpers.ArangoDBHelper.build_context') as mock_build_context:
             mock_build_context.return_value = {'warnings': {}}
             
-            response = client.post(f'/api/v1/feeds/{feed.id}/bundle/', bundle_data, format='json')
+            response = client.post(f'/api/v1/feeds/{feed.id}/bundle/', bundle_data, content_type='application/json')
             
             # Verify build_context was called
             mock_build_context.assert_called_once()
