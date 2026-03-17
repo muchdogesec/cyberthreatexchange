@@ -142,7 +142,7 @@ class TestFeedSerializer:
         """Test creating feed with serializer."""
         data = {
             "name": "New Feed",
-            "description": "A new feed",
+            "short_description": "A new feed",
             "identity_id": identity.id,
             "tags": ["test"],
         }
@@ -171,7 +171,7 @@ class TestFeedSerializer:
         """Test that duplicate name+identity raises error on name field."""
         data = {
             "name": feed.name,  # Same name as existing feed
-            "description": "Another feed with same name",
+            "short_description": "Another feed with same name",
             "identity_id": feed.identity.id,  # Same identity
             "tags": ["duplicate"],
         }
@@ -188,7 +188,7 @@ class TestFeedSerializer:
         )
         data = {
             "name": feed.name,  # Same name as existing feed
-            "description": "Feed with same name but different identity",
+            "short_description": "Feed with same name but different identity",
             "identity_id": new_identity.id,  # Different identity
             "tags": ["allowed"],
         }
