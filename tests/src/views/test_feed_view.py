@@ -127,7 +127,7 @@ class TestFeedViewCreate:
         """Test that create creates a new feed."""
         feed_data = {
             'name': 'New Feed',
-            'description': 'A newly created feed',
+            'short_description': 'A newly created feed',
             'identity_id': str(identity.id),
             'tags': ['new', 'test'],
         }
@@ -136,7 +136,7 @@ class TestFeedViewCreate:
         
         assert response.status_code == status.HTTP_201_CREATED
         assert response.data['name'] == 'New Feed'
-        assert response.data['description'] == 'A newly created feed'
+        assert response.data['short_description'] == 'A newly created feed'
         assert response.data['tags'] == ['new', 'test']
         
         # Verify feed was created in database with correct ID
@@ -171,7 +171,7 @@ class TestFeedViewCreate:
         """Test that creating a feed also creates ArangoDB collections."""
         feed_data = {
             'name': 'Arango Feed',
-            'description': 'Feed to test ArangoDB collections',
+            'short_description': 'Feed to test ArangoDB collections',
             'identity_id': str(identity.id),
         }
         
