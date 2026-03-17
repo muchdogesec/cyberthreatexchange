@@ -43,8 +43,8 @@ class Feed(models.Model):
     id = models.UUIDField(primary_key=True, default=None, unique=True)
     collection_name = models.CharField(max_length=200, unique=True)
     name = models.CharField(max_length=200)
-    description = models.TextField(null=True, max_length=140)
-    short_description = models.CharField(max_length=512, null=True, blank=True)
+    description = models.TextField(max_length=720, null=True, blank=True)
+    short_description = models.CharField(max_length=140)
     tags = ArrayField(models.CharField(max_length=100), default=list, blank=True)
     last_run = models.DateTimeField(null=True)
     identity = models.ForeignKey(
