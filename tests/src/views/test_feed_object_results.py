@@ -16,7 +16,7 @@ from tests.src.data import (
 from dogesec_commons.objects.helpers import SDO_TYPES, SCO_TYPES, SMO_TYPES
 from unittest.mock import patch
 
-from tests.utils import create_identity
+from tests.utils import Transport, create_identity
 
 @pytest.fixture()
 def test_feed(arango_helper, disconnect_signals):
@@ -43,15 +43,18 @@ def test_feed(arango_helper, disconnect_signals):
 class TestFeedObjectsViewList:
     """Test FeedObjectsView.list method returns all objects."""
 
-    def test_list_returns_all_objects(self, client, test_feed):
+    def test_list_returns_all_objects(self, client, test_feed, api_schema):
         """Test that list endpoint returns all objects in the feed."""
         response = client.get(f"/api/v1/feeds/{test_feed.id}/objects/")
 
         assert response.status_code == status.HTTP_200_OK
         assert "objects" in response.data
         assert len(response.data["objects"]) > 0
+        api_schema["/api/v1/feeds/{feed_id}/objects/"]["GET"].validate_response(
+            Transport.get_st_response(response)
+        )
 
-    def test_list_returns_expected_object_count(self, client, test_feed):
+    def test_list_returns_expected_object_count(self, client, test_feed, api_schema):
         """Test that list returns the expected number of objects."""
         response = client.get(f"/api/v1/feeds/{test_feed.id}/objects/")
 
@@ -59,8 +62,11 @@ class TestFeedObjectsViewList:
         # The arango_helper fixture loads all_objects which contains 25 objects
         # (14 non-relationship objects + 11 relationships)
         assert len(response.data["objects"]) >= len(all_objects)
+        api_schema["/api/v1/feeds/{feed_id}/objects/"]["GET"].validate_response(
+            Transport.get_st_response(response)
+        )
 
-    def test_list_updated_since_excludes(self, client, test_feed, with_hidden_properties, subtests):
+    def test_list_updated_since_excludes(self, client, test_feed, with_hidden_properties, subtests, api_schema):
         """Objects modified before `updated_since` should be excluded."""
         response = client.get(
             f"/api/v1/feeds/{test_feed.id}/objects/"
@@ -78,12 +84,15 @@ class TestFeedObjectsViewList:
                 assert all(
                     obj['_record_modified'] >= updated_since for obj in resp.data["objects"]
                 )
+                api_schema["/api/v1/feeds/{feed_id}/objects/"]["GET"].validate_response(
+                    Transport.get_st_response(resp)
+                )
 
 
 class TestFeedObjectsViewSDOs:
     """Test FeedObjectsView.sdos method returns only SDOs."""
 
-    def test_sdos_includes_expected_types(self, client, test_feed):
+    def test_sdos_includes_expected_types(self, client, test_feed, api_schema):
         """Test that sdos endpoint includes expected SDO types from test data."""
         response = client.get(f"/api/v1/feeds/{test_feed.id}/objects/sdos/")
 
@@ -108,9 +117,12 @@ class TestFeedObjectsViewSDOs:
         assert expected_sdo_types.issubset(
             returned_types
         ), f"Missing SDO types: {expected_sdo_types - returned_types}"
+        api_schema["/api/v1/feeds/{feed_id}/objects/sdos/"]["GET"].validate_response(
+            Transport.get_st_response(response)
+        )
 
 
-    def test_sdos_objects_match_expected_data(self, client, test_feed):
+    def test_sdos_objects_match_expected_data(self, client, test_feed, api_schema):
         """Test that specific SDO objects match expected test data."""
         response = client.get(f"/api/v1/feeds/{test_feed.id}/objects/sdos/")
 
@@ -129,11 +141,14 @@ class TestFeedObjectsViewSDOs:
         threat_actor_obj = objects_by_id[apt29_threat_actor["id"]]
         assert threat_actor_obj["name"] == "APT29"
         assert threat_actor_obj["type"] == "threat-actor"
+        api_schema["/api/v1/feeds/{feed_id}/objects/sdos/"]["GET"].validate_response(
+            Transport.get_st_response(response)
+        )
 
 
 class TestFeedObjectsViewSCOs:
 
-    def test_scos_includes_expected_types(self, client, test_feed):
+    def test_scos_includes_expected_types(self, client, test_feed, api_schema):
         """Test that scos endpoint includes expected SCO types from test data."""
         response = client.get(f"/api/v1/feeds/{test_feed.id}/objects/scos/")
 
@@ -152,9 +167,12 @@ class TestFeedObjectsViewSCOs:
         assert expected_sco_types.issubset(
             returned_types
         ), f"Missing SCO types: {expected_sco_types - returned_types}"
+        api_schema["/api/v1/feeds/{feed_id}/objects/scos/"]["GET"].validate_response(
+            Transport.get_st_response(response)
+        )
 
 
-    def test_scos_objects_match_expected_data(self, client, test_feed):
+    def test_scos_objects_match_expected_data(self, client, test_feed, api_schema):
         response = client.get(f"/api/v1/feeds/{test_feed.id}/objects/scos/")
 
         assert response.status_code == status.HTTP_200_OK
@@ -172,12 +190,15 @@ class TestFeedObjectsViewSCOs:
         mac_obj = objects_by_id[mac_address["id"]]
         assert mac_obj["value"] == "00:1a:2b:3c:4d:5e"
         assert mac_obj["type"] == "mac-addr"
+        api_schema["/api/v1/feeds/{feed_id}/objects/scos/"]["GET"].validate_response(
+            Transport.get_st_response(response)
+        )
 
 
 class TestFeedObjectsViewSMOs:
     """Test FeedObjectsView.smos method returns only SMOs."""
 
-    def test_smos_returns_only_smo_types(self, client, test_feed):
+    def test_smos_returns_only_smo_types(self, client, test_feed, api_schema):
         """Test that smos endpoint returns only STIX Meta Objects."""
         response = client.get(f"/api/v1/feeds/{test_feed.id}/objects/smos/")
 
@@ -190,11 +211,14 @@ class TestFeedObjectsViewSMOs:
             assert (
                 obj["type"] in SMO_TYPES
             ), f"Object type {obj['type']} is not in SMO_TYPES"
+        api_schema["/api/v1/feeds/{feed_id}/objects/smos/"]["GET"].validate_response(
+            Transport.get_st_response(response)
+        )
 
 
 class TestFeedObjectsViewSROs:
 
-    def test_sros_excludes_non_sro_types(self, client, test_feed):
+    def test_sros_excludes_non_sro_types(self, client, test_feed, api_schema):
         """Test that sros endpoint excludes SDOs, SCOs, and SMOs."""
         response = client.get(f"/api/v1/feeds/{test_feed.id}/objects/sros/")
 
@@ -204,8 +228,11 @@ class TestFeedObjectsViewSROs:
 
         # Should only contain relationship (and potentially sighting)
         assert returned_types.issubset({"relationship", "sighting"})
+        api_schema["/api/v1/feeds/{feed_id}/objects/sros/"]["GET"].validate_response(
+            Transport.get_st_response(response)
+        )
 
-    def test_sros_count_matches_test_data(self, client, test_feed):
+    def test_sros_count_matches_test_data(self, client, test_feed, api_schema):
         """Test that the number of relationships matches test data."""
         response = client.get(f"/api/v1/feeds/{test_feed.id}/objects/sros/")
 
@@ -227,12 +254,15 @@ class TestFeedObjectsViewSROs:
 
         # Test data has 11 relationship objects
         assert len(response.data["objects"]) == 11 + len(embedded)
+        api_schema["/api/v1/feeds/{feed_id}/objects/sros/"]["GET"].validate_response(
+            Transport.get_st_response(response)
+        )
 
 
 class TestFeedObjectsViewTypeFiltering:
     """Test that type filtering works correctly across all endpoints."""
 
-    def test_no_overlap_between_sdo_and_sco(self, client, test_feed):
+    def test_no_overlap_between_sdo_and_sco(self, client, test_feed, api_schema):
         """Test that SDOs and SCOs don't overlap."""
         sdo_response = client.get(f"/api/v1/feeds/{test_feed.id}/objects/sdos/")
         sco_response = client.get(f"/api/v1/feeds/{test_feed.id}/objects/scos/")
@@ -245,8 +275,14 @@ class TestFeedObjectsViewTypeFiltering:
 
         # No overlap between SDOs and SCOs
         assert len(sdo_ids & sco_ids) == 0
+        api_schema["/api/v1/feeds/{feed_id}/objects/sdos/"]["GET"].validate_response(
+            Transport.get_st_response(sdo_response)
+        )
+        api_schema["/api/v1/feeds/{feed_id}/objects/scos/"]["GET"].validate_response(
+            Transport.get_st_response(sco_response)
+        )
 
-    def test_no_overlap_between_sdo_and_sro(self, client, test_feed):
+    def test_no_overlap_between_sdo_and_sro(self, client, test_feed, api_schema):
         """Test that SDOs and SROs don't overlap."""
         sdo_response = client.get(f"/api/v1/feeds/{test_feed.id}/objects/sdos/")
         sro_response = client.get(f"/api/v1/feeds/{test_feed.id}/objects/sros/")
@@ -259,19 +295,86 @@ class TestFeedObjectsViewTypeFiltering:
 
         # No overlap between SDOs and SROs
         assert len(sdo_ids & sro_ids) == 0
+        api_schema["/api/v1/feeds/{feed_id}/objects/sdos/"]["GET"].validate_response(
+            Transport.get_st_response(sdo_response)
+        )
+        api_schema["/api/v1/feeds/{feed_id}/objects/sros/"]["GET"].validate_response(
+            Transport.get_st_response(sro_response)
+        )
 
-    def test_all_endpoints_return_valid_objects(self, client, test_feed):
+    def test_all_endpoints_return_valid_objects(self, client, test_feed, api_schema):
         """Test that all endpoints return valid STIX objects."""
         endpoints = [
-            f"/api/v1/feeds/{test_feed.id}/objects/",
-            f"/api/v1/feeds/{test_feed.id}/objects/sdos/",
-            f"/api/v1/feeds/{test_feed.id}/objects/scos/",
-            f"/api/v1/feeds/{test_feed.id}/objects/smos/",
-            f"/api/v1/feeds/{test_feed.id}/objects/sros/",
+            ("/api/v1/feeds/{feed_id}/objects/", f"/api/v1/feeds/{test_feed.id}/objects/"),
+            ("/api/v1/feeds/{feed_id}/objects/sdos/", f"/api/v1/feeds/{test_feed.id}/objects/sdos/"),
+            ("/api/v1/feeds/{feed_id}/objects/scos/", f"/api/v1/feeds/{test_feed.id}/objects/scos/"),
+            ("/api/v1/feeds/{feed_id}/objects/smos/", f"/api/v1/feeds/{test_feed.id}/objects/smos/"),
+            ("/api/v1/feeds/{feed_id}/objects/sros/", f"/api/v1/feeds/{test_feed.id}/objects/sros/"),
         ]
 
-        for endpoint in endpoints:
+        for schema_path, endpoint in endpoints:
             response = client.get(endpoint)
             assert response.status_code == status.HTTP_200_OK
             assert "objects" in response.data
             assert len(response.data["objects"]) > 0
+            api_schema[schema_path]["GET"].validate_response(
+                Transport.get_st_response(response)
+            )
+
+
+class TestFeedObjectsViewRetrieve:
+    """Test FeedObjectsView.retrieve method."""
+
+    def test_retrieve_returns_object_by_id(self, client, test_feed, api_schema):
+        """Test that retrieve endpoint returns a single object by its STIX ID."""
+        # Use the malware object from test data
+        object_id = "malware--d1c612bc-146f-4b65-b7b0-9a54a14150a4"
+        
+        response = client.get(f"/api/v1/feeds/{test_feed.id}/objects/{object_id}/")
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["id"] == object_id
+        assert response.data["type"] == "malware"
+        assert response.data["name"] == "Cobalt Strike"
+        api_schema["/api/v1/feeds/{feed_id}/objects/{object_id}/"]["GET"].validate_response(
+            Transport.get_st_response(response)
+        )
+
+    def test_retrieve_returns_object_by_external_id(self, client, test_feed, api_schema):
+        """Test that retrieve endpoint returns object using external_id."""
+        # The attack pattern has external_id "T1566.001"
+        external_id = "T1566.001"
+        
+        response = client.get(f"/api/v1/feeds/{test_feed.id}/objects/{external_id}/")
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["id"] == "attack-pattern--2e34237d-8574-43f6-aace-ae2915de8597"
+        assert response.data["type"] == "attack-pattern"
+        api_schema["/api/v1/feeds/{feed_id}/objects/{object_id}/"]["GET"].validate_response(
+            Transport.get_st_response(response)
+        )
+
+    def test_retrieve_nonexistent_object_returns_empty(self, client, test_feed):
+        """Test that retrieving a non-existent object returns empty result."""
+        object_id = "malware--00000000-0000-0000-0000-000000000000"
+        
+        response = client.get(f"/api/v1/feeds/{test_feed.id}/objects/{object_id}/")
+        
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+    def test_retrieve_with_version_parameter(self, client, test_feed, api_schema):
+        """Test that retrieve endpoint accepts version parameter."""
+        object_id = "malware--d1c612bc-146f-4b65-b7b0-9a54a14150a4"
+        version = "2020-01-15T10:00:00.000Z"
+        
+        response = client.get(
+            f"/api/v1/feeds/{test_feed.id}/objects/{object_id}/?version={version}"
+        )
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["id"] == object_id
+        assert response.data["modified"] == version
+        api_schema["/api/v1/feeds/{feed_id}/objects/{object_id}/"]["GET"].validate_response(
+            Transport.get_st_response(response)
+        )

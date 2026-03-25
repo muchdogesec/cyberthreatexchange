@@ -59,3 +59,12 @@ def disconnect_signals():
     # Reconnect signals
     post_save.connect(auto_create_collection, sender=models.Feed)
     post_delete.connect(delete_collections, sender=models.Feed)
+
+
+@pytest.fixture(scope="session")
+def api_schema():
+    import schemathesis
+    from cyberthreatexchange.asgi import application
+
+    yield schemathesis.openapi.from_asgi("/api/schema/?format=json", application)
+

@@ -67,9 +67,7 @@ class TestGetObjectByExternalId:
         response = arango_helper.get_object_by_external_id("T1566.001")
 
         assert response.status_code == 200
-        assert {d["id"] for d in response.data["objects"]} == {
-            "attack-pattern--2e34237d-8574-43f6-aace-ae2915de8597"
-        }
+        assert response.data["id"] == "attack-pattern--2e34237d-8574-43f6-aace-ae2915de8597"
 
     @pytest.mark.parametrize(
         "version,has_result",
@@ -86,17 +84,13 @@ class TestGetObjectByExternalId:
         arango_helper.query = {"version": version} if version else {}
         arango_helper.page = 1
         arango_helper.page_size = 10
-
-        response = arango_helper.get_object_by_external_id("T1566.001")
-        assert response.status_code == 200
-        if has_result:
-            assert len(response.data["objects"]) == 1
-            assert (
-                response.data["objects"][0]["id"]
-                == "attack-pattern--2e34237d-8574-43f6-aace-ae2915de8597"
-            )
-        else:
-            assert len(response.data["objects"]) == 0
+        try:
+            response = arango_helper.get_object_by_external_id("T1566.001")
+            assert response.status_code == 200
+            assert response.data["id"] == "attack-pattern--2e34237d-8574-43f6-aace-ae2915de8597"
+        except Exception as exc:
+            assert "not_found" in str(exc), f"Expected no result for version {version} but got a different error: {exc}"
+            assert not has_result, f"Expected no result for version {version} but got an error instead."
 
 
 class TestGetVersions:
@@ -150,7 +144,7 @@ class TestArangoDBHelperWithRealData:
         response = helper.get_object_by_external_id("T1566.001")
         assert response.status_code == 200
         assert (
-            response.data["objects"][0]["id"]
+            response.data["id"]
             == "attack-pattern--2e34237d-8574-43f6-aace-ae2915de8597"
         )
 

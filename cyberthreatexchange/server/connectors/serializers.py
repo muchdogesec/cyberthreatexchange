@@ -1,6 +1,7 @@
 
 from ..models import Connector
 from rest_framework import serializers
+from drf_spectacular.utils import extend_schema_field
 
 from ..models import Connector
 from rest_framework import serializers
@@ -24,8 +25,8 @@ class ConnectorSerializer(serializers.ModelSerializer):
     )
     
     # Indicate if credentials are set (for GET requests)
-    has_username = serializers.SerializerMethodField()
-    has_password = serializers.SerializerMethodField()
+    has_username = serializers.SerializerMethodField(help_text="Indicates if a username is set for this connector")
+    has_password = serializers.SerializerMethodField(help_text="Indicates if a password is set for this connector")
 
     class Meta:
         model = Connector
@@ -41,9 +42,11 @@ class ConnectorSerializer(serializers.ModelSerializer):
             'has_password',
         ]
 
+    @extend_schema_field(serializers.BooleanField())
     def get_has_username(self, obj):
         return bool(obj.enc_user)
 
+    @extend_schema_field(serializers.BooleanField())
     def get_has_password(self, obj):
         return bool(obj.enc_pass)
     
