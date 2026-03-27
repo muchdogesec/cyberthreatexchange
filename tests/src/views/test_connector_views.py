@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, Mock, MagicMock, PropertyMock
 from rest_framework import status
 from cyberthreatexchange.server import models
-from tests.utils import create_identity
+from tests.utils import create_identity, Transport
 from django.utils import timezone
 from datetime import datetime, timedelta
 
@@ -24,7 +24,7 @@ def connector(feed):
 class TestConnectorViewList:
     """Test ConnectorView.list method."""
     
-    def test_list_returns_connectors_for_feed(self, client, feed, connector):
+    def test_list_returns_connectors_for_feed(self, client, feed, connector, api_schema):
         """Test that list returns all connectors for a feed."""
         # Create another connector
         connector2 = models.Connector.objects.create(
@@ -42,8 +42,11 @@ class TestConnectorViewList:
         
         # Verify correct connector IDs are returned
         assert {str(connector.id), str(connector2.id)} ==  {c['id'] for c in response.data['connectors']}
+        api_schema["/api/v1/feeds/{feed_id}/connectors/"]["GET"].validate_response(
+            Transport.get_st_response(response)
+        )
     
-    def test_list_only_returns_connectors_for_specified_feed(self, client, feed, identity, connector):
+    def test_list_only_returns_connectors_for_specified_feed(self, client, feed, identity, connector, api_schema):
         """Test that list only returns connectors for the specified feed."""
         # Create another feed with its own connector
         feed2 = models.Feed.objects.create(
@@ -62,21 +65,27 @@ class TestConnectorViewList:
         
         assert response.status_code == status.HTTP_200_OK
         assert {str(connector.id)} == {c['id'] for c in response.data['connectors']}
+        api_schema["/api/v1/feeds/{feed_id}/connectors/"]["GET"].validate_response(
+            Transport.get_st_response(response)
+        )
     
-    def test_list_returns_empty_for_feed_without_connectors(self, client, feed):
+    def test_list_returns_empty_for_feed_without_connectors(self, client, feed, api_schema):
         """Test that list returns empty list for feed without connectors."""
         response = client.get(f'/api/v1/feeds/{feed.id}/connectors/')
         
         assert response.status_code == status.HTTP_200_OK
         assert 'connectors' in response.data
         assert len(response.data['connectors']) == 0
+        api_schema["/api/v1/feeds/{feed_id}/connectors/"]["GET"].validate_response(
+            Transport.get_st_response(response)
+        )
 
 
 class TestConnectorViewCreate:
     """Test ConnectorView.create method."""
     
     @patch('requests.Session.get', return_value=Mock(status_code=200, json=lambda: {'title': 'test', 'can_read': True, 'can_write': False}))
-    def test_create_connector_success(self, mock_get, client, feed):
+    def test_create_connector_success(self, mock_get, client, feed, api_schema):
         """Test successful connector creation."""
         data = {
             'name': 'New Connector',
@@ -104,9 +113,12 @@ class TestConnectorViewCreate:
         assert connector.username == 'user123'  # Verify decryption works
         assert connector.enc_pass and connector.enc_pass != 'pass456'  # Verify password is encrypted
         assert connector.password == 'pass456'
+        api_schema["/api/v1/feeds/{feed_id}/connectors/taxii21/"]["POST"].validate_response(
+            Transport.get_st_response(response)
+        )
     
     @patch('requests.Session.get', return_value=Mock(status_code=200, json=lambda: {'title': 'test', 'can_read': True, 'can_write': False}))
-    def test_create_connector_without_credentials(self, mock_get, client, feed):
+    def test_create_connector_without_credentials(self, mock_get, client, feed, api_schema):
         """Test creating connector without optional credentials."""
         data = {
             'name': 'Public Connector',
@@ -122,6 +134,9 @@ class TestConnectorViewCreate:
         connector = models.Connector.objects.get(id=response.data['id'])
         assert connector.username is None
         assert connector.password is None
+        api_schema["/api/v1/feeds/{feed_id}/connectors/taxii21/"]["POST"].validate_response(
+            Transport.get_st_response(response)
+        )
     
     def test_create_connector_missing_required_fields(self, client, feed):
         """Test that creating connector without required fields fails."""
@@ -154,7 +169,7 @@ class TestConnectorViewCreate:
 class TestConnectorViewRetrieve:
     """Test ConnectorView.retrieve method."""
     
-    def test_retrieve_connector(self, client, feed, connector):
+    def test_retrieve_connector(self, client, feed, connector, api_schema):
         """Test retrieving a connector."""
         response = client.get(f'/api/v1/feeds/{feed.id}/connectors/{connector.id}/')
         
@@ -168,6 +183,9 @@ class TestConnectorViewRetrieve:
         assert response.data['has_password'] is True
         assert 'username' not in response.data
         assert 'password' not in response.data
+        api_schema["/api/v1/feeds/{feed_id}/connectors/{connector_id}/"]["GET"].validate_response(
+            Transport.get_st_response(response)
+        )
     
     def test_retrieve_nonexistent_connector(self, client, feed):
         """Test retrieving a non-existent connector."""
@@ -297,7 +315,7 @@ class TestConnectorTestConnection:
     """Test ConnectorView.test_connection action."""
     
     @patch('requests.Session.get', return_value=Mock(status_code=200, json=lambda: {'title': 'test', 'can_read': True, 'can_write': False}))
-    def test_connection_success(self, mock_get, client, feed, connector):
+    def test_connection_success(self, mock_get, client, feed, connector, api_schema):
         """Test successful connection test."""
         response = client.get(f'/api/v1/feeds/{feed.id}/connectors/{connector.id}/test-connection/')
         
@@ -305,16 +323,22 @@ class TestConnectorTestConnection:
         assert response.data['success'] is True
         assert response.data['status_code'] == 200
         assert 'response' in response.data
+        api_schema["/api/v1/feeds/{feed_id}/connectors/{connector_id}/test-connection/"]["GET"].validate_response(
+            Transport.get_st_response(response)
+        )
     
     @patch('requests.Session.get', return_value=Mock(status_code=200, json=lambda: {'title': 'test', 'can_read': True, 'can_write': False}))
-    def test_connection_with_authentication(self, mock_get, client, feed, connector):
+    def test_connection_with_authentication(self, mock_get, client, feed, connector, api_schema):
         """Test connection test uses authentication credentials."""
         response = client.get(f'/api/v1/feeds/{feed.id}/connectors/{connector.id}/test-connection/')
         
         assert response.status_code == status.HTTP_200_OK
         assert response.data['success'] is True
+        api_schema["/api/v1/feeds/{feed_id}/connectors/{connector_id}/test-connection/"]["GET"].validate_response(
+            Transport.get_st_response(response)
+        )
 
-    def test_connection_cant_read(self, client, feed, connector):
+    def test_connection_cant_read(self, client, feed, connector, api_schema):
         """Test connection test when connector cannot read collection."""
         mock_response = Mock(status_code=200, json=lambda: {'title': 'test', 'can_read': False, 'can_write': False})
         with patch('requests.Session.get', return_value=mock_response):
@@ -323,6 +347,9 @@ class TestConnectorTestConnection:
         assert response.status_code == status.HTTP_200_OK
         assert response.data['success'] is False
         assert 'error' in response.data
+        api_schema["/api/v1/feeds/{feed_id}/connectors/{connector_id}/test-connection/"]["GET"].validate_response(
+            Transport.get_st_response(response)
+        )
     
     @patch('requests.Session.get', return_value=Mock(status_code=401, json=lambda: {'title': 'Unauthorized'}))
     def test_connection_failure_401(self, mock_get, client, feed, connector):
@@ -367,7 +394,7 @@ class TestConnectorPoll:
     """Test ConnectorView.poll action."""
     
     @patch('cyberthreatexchange.worker.tasks.poll_taxii_connector_task.delay')
-    def test_poll_creates_job(self, mock_task, client, feed, connector):
+    def test_poll_creates_job(self, mock_task, client, feed, connector, api_schema):
         """Test that poll action creates a job."""
         response = client.post(f'/api/v1/feeds/{feed.id}/connectors/{connector.id}/poll/', content_type='application/json')
         
@@ -382,9 +409,12 @@ class TestConnectorPoll:
         
         # Verify task was called
         mock_task.assert_called_once()
+        api_schema["/api/v1/feeds/{feed_id}/connectors/{connector_id}/poll/"]["POST"].validate_response(
+            Transport.get_st_response(response)
+        )
     
     @patch('cyberthreatexchange.worker.tasks.poll_taxii_connector_task.delay')
-    def test_poll_with_added_after(self, mock_task, client, feed, connector):
+    def test_poll_with_added_after(self, mock_task, client, feed, connector, api_schema):
         """Test poll with added_after parameter."""
         added_after = timezone.now() - timedelta(days=7)
         data = {'added_after': added_after.isoformat()}
@@ -400,9 +430,12 @@ class TestConnectorPoll:
         # Verify task was called with added_after
         call_kwargs = mock_task.call_args[1]
         assert call_kwargs['added_after'] is not None
+        api_schema["/api/v1/feeds/{feed_id}/connectors/{connector_id}/poll/"]["POST"].validate_response(
+            Transport.get_st_response(response)
+        )
     
     @patch('cyberthreatexchange.worker.tasks.poll_taxii_connector_task.delay')
-    def test_poll_without_added_after_uses_next_run_added_after(self, mock_task, client, feed, connector):
+    def test_poll_without_added_after_uses_next_run_added_after(self, mock_task, client, feed, connector, api_schema):
         """Test poll without added_after uses connector's next_run_added_after."""
         # Set next_run_added_after on connector
         last_added = timezone.now() - timedelta(days=1)
@@ -416,6 +449,9 @@ class TestConnectorPoll:
         # Verify job payload contains connector info
         job = models.Job.objects.get(id=response.data['id'])
         assert 'connector_id' in job.payload
+        api_schema["/api/v1/feeds/{feed_id}/connectors/{connector_id}/poll/"]["POST"].validate_response(
+            Transport.get_st_response(response)
+        )
         assert job.payload['connector_id'] == str(connector.id)
     
     @patch('cyberthreatexchange.worker.tasks.poll_taxii_connector_task.delay')

@@ -39,7 +39,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiParameter
 from rest_framework import decorators, exceptions, status, viewsets, mixins
 from rest_framework.response import Response
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, get_list_or_404
 
 from cyberthreatexchange.server import models, serializers
 from cyberthreatexchange.server.arango_helpers import ALL_SEARCH_TYPES, ArangoDBHelper
@@ -703,159 +703,22 @@ class ObjectValueFilterSet(FilterSet):
         fields = ["value"]
 
 
-@extend_schema_view(
-    list=extend_schema(
-        summary="Search Object Values",
-        description="Search STIX object values with reference resolution using full-text search. "
-        "When searching by a value that matches a reference, objects containing that reference will also appear.",
-        parameters=[
-            OpenApiParameter(
-                name="feed_ids",
-                description="Comma-separated UUIDs of feeds to search within (optional, if omitted searches all feeds)",
-                required=False,
-                location=OpenApiParameter.QUERY,
-            ),
-            OpenApiParameter(
-                name="value",
-                description="Search term (full-text search)",
-                required=True,
-                location=OpenApiParameter.QUERY,
-            ),
-            OpenApiParameter(
-                name="show_older_versions",
-                description="If false (default), only return latest version of each object. If true, return all versions.",
-                required=False,
-                location=OpenApiParameter.QUERY,
-            ),
-        ],
-        responses={200: serializers.ObjectValueSerializer, 400: DEFAULT_400_RESPONSE},
-    ),
-)
-class ObjectValueSearchView(mixins.ListModelMixin, viewsets.GenericViewSet):
-    """
-    Search endpoint for STIX object values.
-
-    Uses PostgreSQL full-text search (websearch) for better relevance and performance.
-    When searching by a value that matches a reference:
-    - Direct matches: Objects whose values match the search term
-    - Reference matches: Objects that reference objects with matching values
-
-    This enables transitive searching where searching for a malware name will also
-    return campaigns that reference that malware.
-
-    Optional feed filtering:
-    - If feed_ids provided: Only returns results found in those feeds
-    - If feed_ids omitted: Returns results from all feeds
-
-    Version filtering:
-    - If show_older_versions=false (default): Only latest modified version per stix_id
-    - If show_older_versions=true: All versions returned
-    """
-
-    openapi_tags = ["Search"]
+class ObjectFeedsView(mixins.ListModelMixin, viewsets.GenericViewSet):
     queryset = models.ObjectValue.objects.all()
-    serializer_class = serializers.ObjectValueSerializer
-    pagination_class = Pagination("values")
-    filter_backends = [DjangoFilterBackend]
-    filterset_class = ObjectValueFilterSet
-
+    openapi_tags = ["Search"]
+    serializer_class = serializers.ObjectFeedsDetailSerializer
+    lookup_url_kwarg = "object_id"
     def get_queryset(self):
-        """Search with optional feed filtering and version control using full-text search."""
-        from django.db.models import Q, Case, When, Value, IntegerField, F, Window, Max
-        from django.db.models.functions import RowNumber
-        from django.contrib.postgres.search import SearchVector, SearchQuery, SearchRank
-
-        search_value = self.request.query_params.get("value", "").strip()
-        feed_ids_param = self.request.query_params.get("feed_ids", "").strip()
-        show_older_versions = (
-            self.request.query_params.get("show_older_versions", "false").lower()
-            == "true"
-        )
-
-        if not search_value:
-            raise exceptions.ValidationError({"value": "This field is required."})
-
-        # Parse feed_ids if provided
-        feed_ids_list = []
-        if feed_ids_param:
-            feed_ids_list = [
-                fid.strip() for fid in feed_ids_param.split(",") if fid.strip()
-            ]
-            # Validate feed IDs exist
-            existing_feeds = models.Feed.objects.filter(id__in=feed_ids_list).count()
-            if existing_feeds != len(feed_ids_list):
-                raise exceptions.ValidationError(
-                    {"feed_ids": "One or more feed IDs not found."}
-                )
-
-        # Start with base queryset
-        queryset = models.ObjectValue.objects.all()
-
-        # Filter by feed_ids if provided
-        if feed_ids_list:
-            queryset = queryset.filter(feed_id__in=feed_ids_list)
-
-        # Pre-filter to only latest versions if needed (before search)
-        if not show_older_versions:
-            # Subquery to get the max modified per stix_id per feed
-            from django.db.models import OuterRef, Subquery
-
-            max_modified_subquery = (
-                models.ObjectValue.objects.filter(
-                    stix_id=OuterRef("stix_id"), feed_id=OuterRef("feed_id")
-                )
-                .values("stix_id", "feed_id")
-                .annotate(max_mod=Max("modified"))
-                .values("max_mod")
-            )
-
-            queryset = queryset.annotate(
-                max_modified=Subquery(max_modified_subquery)
-            ).filter(modified=F("max_modified"))
-
-        # Split search value into individual words for independent matching
-        search_words = [word.strip() for word in search_value.split() if word.strip()]
-
-        if not search_words:
-            raise exceptions.ValidationError(
-                {"value": "No valid search terms provided."}
-            )
-
-        # Build Q objects for icontains matching on each word
-        from django.db.models import Q
-
-        word_q = Q()
-        for word in search_words:
-            word_q |= Q(value__icontains=word)
-
-        # Get direct value matches using icontains
-        direct_matches = queryset.filter(is_ref=False).filter(word_q).values("id")
-
-        # Get reference matches (objects that reference objects with matching values)
-        # Step 1: Find all objects with values matching the search terms
-        matching_stix_ids = (
-            queryset.filter(word_q).values_list("stix_id", flat=True).distinct()
-        )
-
-        # Step 2: Find objects that reference those matching objects
-        ref_matches = queryset.filter(
-            is_ref=True, ref_stix_id__in=matching_stix_ids
-        ).values("id")
-
-        # Combine all result sets
-        combined_ids = direct_matches.union(ref_matches)
-
-        # Query back to get full model instances and sort by modified date
-        combined_queryset = (
-            models.ObjectValue.objects.filter(id__in=combined_ids)
-            .order_by("-modified")
-            .distinct()
-        )
-        return combined_queryset
-
-    def list(self, request, *args, **kwargs):
-        """List search results with relevance scoring."""
-        return super().list(request, *args, **kwargs)
+        qs = self.queryset
+        return qs
+    
+    @decorators.action(detail=True, methods=["GET"])
+    def feeds(self, request, object_id):
+        obj = get_list_or_404(models.ObjectValue, stix_id=object_id)[0]
+        feed_ids = self.get_queryset().filter(stix_id=obj.stix_id).values_list("feed_id", flat=True).distinct()
+        obj.feeds = models.Feed.objects.filter(id__in=feed_ids)
+        serializer = serializers.ObjectFeedsDetailSerializer(obj)
+        return Response(serializer.data)
 
 
 @extend_schema_view(

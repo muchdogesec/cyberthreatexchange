@@ -338,13 +338,12 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
             reverse=True,
         )
         matches = matches[:1]
-
+        if not matches:
+            raise exceptions.NotFound({"error": "No such object"})
+        
         if bundle:
             return self.get_bundle(matches)
-
-        return self.get_paginated_response(
-            self.container, matches, self.page, self.page_size, len(matches)
-        )
+        return Response(matches[0])
 
     def get_versions(self, stix_id):
         query = """
@@ -366,8 +365,6 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
         binds = {"@view": settings.VIEW_NAME, "matches": matches}
         more_search_filters = []
         late_filters = []
-        if not matches:
-            raise exceptions.NotFound({"error": "No such object"})
 
         if not self.query_as_bool("show_embedded_refs", True):
             more_search_filters.append("d._is_ref != TRUE")

@@ -64,6 +64,19 @@ class ObjectValueSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+class MicroFeedSerializer(serializers.ModelSerializer):
+    """ Serializer for listing feeds that contain a specific STIX object. """
+
+    class Meta:
+        model = Feed
+        fields = ["id", "name"]
+        read_only_fields = fields
+
+class ObjectFeedsDetailSerializer(serializers.Serializer):
+    id = serializers.CharField(read_only=True, source="stix_id")
+    feeds = MicroFeedSerializer(many=True, read_only=True)
+    
+
 
 class StixVersionsSerializer(serializers.Serializer):
     versions = serializers.ListField(child=serializers.DateTimeField())

@@ -5,14 +5,14 @@ from rest_framework.response import Response
 from cyberthreatexchange.server import models, serializers
 from cyberthreatexchange.server.arango_helpers import ArangoDBHelper
 from tests.src.data import all_objects
-from tests.utils import create_identity
+from tests.utils import create_identity, Transport
 
 
 
 class TestFeedViewList:
     """Test FeedView.list method."""
     
-    def test_list_returns_all_feeds(self, client, feed, identity):
+    def test_list_returns_all_feeds(self, client, feed, identity, api_schema):
         """Test that list returns all feeds."""
         # Create another feed
         feed2 = models.Feed.objects.create(
@@ -32,8 +32,11 @@ class TestFeedViewList:
         returned_ids = {f['id'] for f in response.data['feeds']}
         assert str(feed.id) in returned_ids
         assert str(feed2.id) in returned_ids
+        api_schema["/api/v1/feeds/"]["GET"].validate_response(
+            Transport.get_st_response(response)
+        )
     
-    def test_list_filters_by_name(self, client, feed, identity):
+    def test_list_filters_by_name(self, client, feed, identity, api_schema):
         """Test that list can filter by name."""
         # Create feeds with different names
         feed2 = models.Feed.objects.create(
@@ -54,8 +57,11 @@ class TestFeedViewList:
         returned_ids = [f['id'] for f in response.data['feeds']]
         assert str(feed.id) in returned_ids
         assert str(feed2.id) not in returned_ids
+        api_schema["/api/v1/feeds/"]["GET"].validate_response(
+            Transport.get_st_response(response)
+        )
     
-    def test_list_filters_by_tags(self, client, feed, identity):
+    def test_list_filters_by_tags(self, client, feed, identity, api_schema):
         """Test that list can filter by tags."""
         # Create feed with different tags
         feed2 = models.Feed.objects.create(
@@ -74,8 +80,11 @@ class TestFeedViewList:
         returned_ids = [f['id'] for f in response.data['feeds']]
         assert str(feed.id) in returned_ids
         assert str(feed2.id) not in returned_ids
+        api_schema["/api/v1/feeds/"]["GET"].validate_response(
+            Transport.get_st_response(response)
+        )
     
-    def test_list_filters_by_identity(self, client, feed, identity):
+    def test_list_filters_by_identity(self, client, feed, identity, api_schema):
         """Test that list can filter by identity."""
         # Create another identity and feed
         identity2 = create_identity(
@@ -99,12 +108,15 @@ class TestFeedViewList:
         returned_ids = [f['id'] for f in response.data['feeds']]
         assert str(feed.id) in returned_ids
         assert str(feed2.id) not in returned_ids
+        api_schema["/api/v1/feeds/"]["GET"].validate_response(
+            Transport.get_st_response(response)
+        )
 
 
 class TestFeedViewRetrieve:
     """Test FeedView.retrieve method."""
     
-    def test_retrieve_returns_feed(self, client, feed):
+    def test_retrieve_returns_feed(self, client, feed, api_schema):
         """Test that retrieve returns a single feed by ID."""
         response = client.get(f'/api/v1/feeds/{feed.id}/')
         
@@ -112,6 +124,9 @@ class TestFeedViewRetrieve:
         assert response.data['id'] == str(feed.id)
         assert response.data['name'] == feed.name
         assert response.data['description'] == feed.description
+        api_schema["/api/v1/feeds/{feed_id}/"]["GET"].validate_response(
+            Transport.get_st_response(response)
+        )
     
     def test_retrieve_nonexistent_feed_returns_404(self, client):
         """Test that retrieving a non-existent feed returns 404."""
@@ -123,7 +138,7 @@ class TestFeedViewRetrieve:
 class TestFeedViewCreate:
     """Test FeedView.create method."""
     
-    def test_create_feed(self, client, identity):
+    def test_create_feed(self, client, identity, api_schema):
         """Test that create creates a new feed."""
         feed_data = {
             'name': 'New Feed',
@@ -143,6 +158,9 @@ class TestFeedViewCreate:
         feed = models.Feed.objects.get(id=response.data['id'])
         assert feed.name == 'New Feed'
         assert str(feed.id) == response.data['id']
+        api_schema["/api/v1/feeds/"]["POST"].validate_response(
+            Transport.get_st_response(response)
+        )
     
     def test_create_feed_without_name_fails(self, client, identity):
         """Test that creating a feed without a name fails."""
@@ -167,7 +185,7 @@ class TestFeedViewCreate:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
 
-    def test_create_feed_creates_arango_collections(self, client, identity):
+    def test_create_feed_creates_arango_collections(self, client, identity, api_schema):
         """Test that creating a feed also creates ArangoDB collections."""
         feed_data = {
             'name': 'Arango Feed',
@@ -184,12 +202,15 @@ class TestFeedViewCreate:
         helper = ArangoDBHelper(feed.vertex_collection, None)
         assert helper.db.has_collection(feed.vertex_collection)
         assert helper.db.has_collection(feed.edge_collection)
+        api_schema["/api/v1/feeds/"]["POST"].validate_response(
+            Transport.get_st_response(response)
+        )
 
 
 class TestFeedViewUpdate:
     """Test FeedView.partial_update method."""
     
-    def test_update_feed_name(self, client, feed):
+    def test_update_feed_name(self, client, feed, api_schema):
         """Test that partial_update can update feed name."""
         update_data = {'name': 'Updated Feed Name'}
         
@@ -202,8 +223,11 @@ class TestFeedViewUpdate:
         # Verify in database
         feed.refresh_from_db()
         assert feed.name == 'Updated Feed Name'
+        api_schema["/api/v1/feeds/{feed_id}/"]["PATCH"].validate_response(
+            Transport.get_st_response(response)
+        )
     
-    def test_update_feed_description(self, client, feed):
+    def test_update_feed_description(self, client, feed, api_schema):
         """Test that partial_update can update feed description."""
         update_data = {'description': 'Updated description'}
         
@@ -216,8 +240,11 @@ class TestFeedViewUpdate:
         # Verify in database
         feed.refresh_from_db()
         assert feed.description == 'Updated description'
+        api_schema["/api/v1/feeds/{feed_id}/"]["PATCH"].validate_response(
+            Transport.get_st_response(response)
+        )
     
-    def test_update_feed_tags(self, client, feed):
+    def test_update_feed_tags(self, client, feed, api_schema):
         """Test that partial_update can update feed tags."""
         update_data = {'tags': ['updated', 'tags']}
         
@@ -230,6 +257,9 @@ class TestFeedViewUpdate:
         # Verify in database
         feed.refresh_from_db()
         assert feed.tags == ['updated', 'tags']
+        api_schema["/api/v1/feeds/{feed_id}/"]["PATCH"].validate_response(
+            Transport.get_st_response(response)
+        )
     
     def test_update_nonexistent_feed_returns_404(self, client):
         """Test that updating a non-existent feed returns 404."""
@@ -273,7 +303,7 @@ class TestFeedViewDestroy:
 class TestFeedViewBundle:
     """Test FeedView.bundle custom action."""
     
-    def test_bundle_creates_job(self, client, feed):
+    def test_bundle_creates_job(self, client, feed, api_schema):
         """Test that posting a bundle creates a job."""
         bundle_data = {
             'type': 'bundle',
@@ -292,8 +322,11 @@ class TestFeedViewBundle:
         assert str(job.feed.id) == str(feed.id)
         assert job.type == models.JobTypes.BUNDLE_UPLOAD
         assert job.state == models.JobStates.PROCESSING
+        api_schema["/api/v1/feeds/{feed_id}/bundle/"]["POST"].validate_response(
+            Transport.get_st_response(response)
+        )
     
-    def test_bundle_with_valid_data_starts_processing(self, client, feed):  
+    def test_bundle_with_valid_data_starts_processing(self, client, feed, api_schema):  
         """Test that a valid bundle doesn't fail validation."""
         bundle_data = {
             'type': 'bundle',
@@ -318,6 +351,9 @@ class TestFeedViewBundle:
         
         # Verify task was called
         mock_task.assert_called_once()
+        api_schema["/api/v1/feeds/{feed_id}/bundle/"]["POST"].validate_response(
+            Transport.get_st_response(response)
+        )
     
     def test_bundle_with_invalid_data_fails(self, client, feed):
         """Test that an invalid bundle returns 400 without creating a job."""
