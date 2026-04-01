@@ -590,6 +590,7 @@ class SearchView(mixins.ListModelMixin, viewsets.GenericViewSet):
     openapi_tags = ["Search"]
     filter_backends = [DjangoFilterBackend, Ordering]
     ordering_fields = ["created", "modified", "value"]
+    lookup_url_kwarg = "object_id"
 
     class filterset_class(FilterSet):
         value = CharFilter(
@@ -650,6 +651,20 @@ class SearchView(mixins.ListModelMixin, viewsets.GenericViewSet):
         self.serializer_class = values_serializers.ValuesAsStixSerializer
         serializer = self.get_serializer(page, many=True)
         return self.get_paginated_response(serializer.data)
+    
+
+    @decorators.action(detail=True, methods=["GET"], serializer_class=serializers.ObjectFeedsDetailSerializer)
+    def feeds(self, request, object_id):
+        obj = get_list_or_404(models.NewObjectValue, stix_id=object_id)[0]
+        feed_ids = (
+            models.NewObjectValue.objects.all()
+            .filter(stix_id=obj.stix_id)
+            .values_list("feed_id", flat=True)
+            .distinct()
+        )
+        obj.feeds = models.Feed.objects.filter(id__in=feed_ids)
+        serializer = serializers.ObjectFeedsDetailSerializer(obj)
+        return Response(serializer.data)
 
 
 @extend_schema_view(
@@ -729,30 +744,6 @@ class SchemaViewCached(SpectacularAPIView):
                 "Content-Disposition": f'inline; filename="{self._get_filename(request, version)}"'
             },
         )
-
-
-class ObjectFeedsView(mixins.ListModelMixin, viewsets.GenericViewSet):
-    queryset = models.NewObjectValue.objects.all()
-    openapi_tags = ["Search"]
-    serializer_class = serializers.ObjectFeedsDetailSerializer
-    lookup_url_kwarg = "object_id"
-
-    def get_queryset(self):
-        qs = self.queryset
-        return qs
-
-    @decorators.action(detail=True, methods=["GET"])
-    def feeds(self, request, object_id):
-        obj = get_list_or_404(models.NewObjectValue, stix_id=object_id)[0]
-        feed_ids = (
-            self.get_queryset()
-            .filter(stix_id=obj.stix_id)
-            .values_list("feed_id", flat=True)
-            .distinct()
-        )
-        obj.feeds = models.Feed.objects.filter(id__in=feed_ids)
-        serializer = serializers.ObjectFeedsDetailSerializer(obj)
-        return Response(serializer.data)
 
 
 @extend_schema_view(
