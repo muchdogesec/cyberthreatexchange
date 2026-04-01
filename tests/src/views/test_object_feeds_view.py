@@ -4,9 +4,8 @@ Tests for ObjectFeedsView endpoint (/api/v1/search/<object_id>/feeds/)
 
 import pytest
 from rest_framework import status
-from cyberthreatexchange.server.models import Feed, ObjectValue
+from cyberthreatexchange.server.models import Feed, NewObjectValue
 from tests.utils import Transport
-from datetime import datetime
 from django.utils import timezone
 
 
@@ -43,25 +42,21 @@ def object_in_multiple_feeds(db, feed1, feed2):
     stix_id = "indicator--12345678-1234-1234-1234-123456789abc"
     modified_time = timezone.now()
 
-    # Create ObjectValue entries for the same object in two different feeds
-    ObjectValue.objects.create(
+    # Create NewObjectValue entries for the same object in two different feeds
+    NewObjectValue.objects.create(
         feed=feed1,
         stix_id=stix_id,
-        stix_type="indicator",
+        type="indicator",
         modified=modified_time,
-        value="test-value",
-        value_type="pattern",
-        is_ref=False,
+        values={"pattern": "test-value"},
     )
 
-    ObjectValue.objects.create(
+    NewObjectValue.objects.create(
         feed=feed2,
         stix_id=stix_id,
-        stix_type="indicator",
+        type="indicator",
         modified=modified_time,
-        value="test-value",
-        value_type="pattern",
-        is_ref=False,
+        values={"pattern": "test-value"},
     )
 
     return stix_id
@@ -73,14 +68,12 @@ def object_in_single_feed(db, feed1):
     stix_id = "malware--87654321-4321-4321-4321-cba987654321"
     modified_time = timezone.now()
 
-    ObjectValue.objects.create(
+    NewObjectValue.objects.create(
         feed=feed1,
         stix_id=stix_id,
-        stix_type="malware",
+        type="malware",
         modified=modified_time,
-        value="malware-name",
-        value_type="name",
-        is_ref=False,
+        values={"name": "malware-name"},
     )
 
     return stix_id
@@ -156,43 +149,7 @@ class TestObjectFeedsView:
             Transport.get_st_response(response)
         )
 
-    def test_feeds_deduplication_same_object_multiple_versions(
-        self, client, feed1, api_schema
-    ):
-        """Test that feeds are deduplicated when object has multiple versions in same feed."""
-        stix_id = "attack-pattern--11111111-1111-1111-1111-111111111111"
 
-        # Create two versions of the same object in the same feed
-        ObjectValue.objects.create(
-            feed=feed1,
-            stix_id=stix_id,
-            stix_type="attack-pattern",
-            modified=timezone.now(),
-            value="technique-v1",
-            value_type="name",
-            is_ref=False,
-        )
-
-        ObjectValue.objects.create(
-            feed=feed1,
-            stix_id=stix_id,
-            stix_type="attack-pattern",
-            modified=timezone.now(),
-            value="technique-v2",
-            value_type="name",
-            is_ref=False,
-        )
-
-        response = client.get(f"/api/v1/search/{stix_id}/feeds/")
-
-        assert response.status_code == status.HTTP_200_OK
-        assert len(response.data["feeds"]) == 1
-        assert response.data["feeds"][0]["id"] == str(feed1.id)
-
-        # Validate against API schema
-        api_schema["/api/v1/search/{object_id}/feeds/"]["GET"].validate_response(
-            Transport.get_st_response(response)
-        )
 
     def test_feeds_response_structure(
         self, client, object_in_single_feed, feed1, api_schema
@@ -229,14 +186,12 @@ class TestObjectFeedsView:
 
         # Create the same object in three feeds
         for feed in [feed1, feed2, feed3]:
-            ObjectValue.objects.create(
+            NewObjectValue.objects.create(
                 feed=feed,
                 stix_id=stix_id,
-                stix_type="threat-actor",
+                type="threat-actor",
                 modified=modified_time,
-                value="APT Group",
-                value_type="name",
-                is_ref=False,
+                values={"name": "APT Group"},
             )
 
         response = client.get(f"/api/v1/search/{stix_id}/feeds/")

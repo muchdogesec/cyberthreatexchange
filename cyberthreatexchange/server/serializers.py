@@ -3,11 +3,10 @@ import stix2
 import stix2.exceptions
 
 from cyberthreatexchange.server.arango_helpers import ArangoDBHelper
-from .models import Feed, Identity, Job, ObjectValue, Connector
+from .models import Feed, Identity, Job, Connector
 from rest_framework import serializers, validators
 from dogesec_commons.utils.serializers import JSONSchemaSerializer
 
-from .models import Feed, Identity, Job, ObjectValue, Connector
 from rest_framework import serializers, validators
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework.fields import get_error_detail
@@ -41,28 +40,6 @@ class JobDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Job
         exclude = ["feed"]
-
-
-class ObjectValueSerializer(serializers.ModelSerializer):
-    """Serializer for ObjectValue search results."""
-
-    feed_id = serializers.UUIDField(source="feed.id", read_only=True)
-
-    class Meta:
-        model = ObjectValue
-        fields = [
-            "id",
-            "feed_id",
-            "stix_id",
-            "stix_type",
-            "modified",
-            "value",
-            "value_type",
-            "is_ref",
-            "ref_stix_id",
-            "created_at",
-        ]
-        read_only_fields = fields
 
 class MicroFeedSerializer(serializers.ModelSerializer):
     """ Serializer for listing feeds that contain a specific STIX object. """

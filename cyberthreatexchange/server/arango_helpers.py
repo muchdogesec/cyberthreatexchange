@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import typing
 import uuid
 from django.conf import settings
+from dogesec_commons import objects
 from cyberthreatexchange.server.utils import Pagination, Response
 from drf_spectacular.utils import OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
@@ -587,6 +588,17 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
         # print(query, binds)
         resp = self.execute_query(query, bind_vars=binds, **kwargs)
         return resp
+    
+    def get_context_for_objects(self, object_ids):
+        bind_vars = {
+            "object_ids": tuple(set(object_ids)),
+        }
+        objects = self.generic_query(self.semantic_search_view, [
+            'doc._is_latest == TRUE',
+            'doc.id IN @object_ids',
+        ], [], bind_vars, use_limit=False, sort_statement="SORT doc.modified ASC")
+        objects_by_id = {obj["id"]: obj for obj in objects}
+        return objects_by_id
 
     @staticmethod
     def add_feed_id(objects):

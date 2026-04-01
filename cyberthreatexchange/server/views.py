@@ -6,6 +6,8 @@ import itertools
 import logging
 import textwrap
 
+from cyberthreatexchange.server.values.filters import FirstValue
+import cyberthreatexchange.server.values.serializers as values_serializers
 from cyberthreatexchange.worker.utils import md5_hash
 
 SEMANTIC_SEARCH_SORT_FIELDS = [
@@ -269,7 +271,9 @@ class FeedView(viewsets.ModelViewSet):
             type=models.JobTypes.BUNDLE_UPLOAD,
             state=models.JobStates.PROCESSING,
             payload=request.data,
-            warnings=list(context["warnings"].values()) if context.get("warnings") else [],
+            warnings=(
+                list(context["warnings"].values()) if context.get("warnings") else []
+            ),
         )
         upload_bundle_task.delay(job_id=job.id, warnings=context.get("warnings"))
 
@@ -579,35 +583,73 @@ class FeedObjectsView(viewsets.GenericViewSet):
         ),
     )
 )
-class SearchView(viewsets.ViewSet):
+class SearchView(mixins.ListModelMixin, viewsets.GenericViewSet):
     serializer_class = serializers.StixObjectsPlaceholderSerializer(many=True)
+    serializer_class = values_serializers.ValuesSerializer
     pagination_class = Pagination("objects")
     openapi_tags = ["Search"]
-    filter_backends = [DjangoFilterBackend]
+    filter_backends = [DjangoFilterBackend, Ordering]
+    ordering_fields = ["created", "modified", "value"]
 
     class filterset_class(FilterSet):
-        text = CharFilter(help_text="The search query. e.g `denial of service`")
+        value = CharFilter(
+            lookup_expr="jsonb_vcontains",
+            field_name="values",
+            help_text="The search query. e.g `denial of service`",
+        )
+        value_exact = CharFilter(
+            lookup_expr="jsonb_vexact",
+            field_name="values",
+            help_text="The search query, but only return results where the value matches exactly. e.g `denial of service` will not match `denial of service against ACME Corp`, but will match `denial of service`",
+        )
         types = ChoiceCSVFilter(
+            lookup_expr="in",
+            field_name="type",
             choices=[(f, f) for f in ALL_SEARCH_TYPES],
             help_text="Filter the results by STIX Object type.",
         )
         feed_ids = BaseCSVFilter(
+            lookup_expr="in",
+            field_name="feed_id",
             help_text="Filter results by containing feed_ids you want to search.",
         )
         author_ids = BaseCSVFilter(
+            lookup_expr="in",
+            field_name="feed__identity_id",
             help_text="Filter results by containing the identity_id of the feed's author.",
         )
-        show_feed_id = BooleanFilter(
-            help_text="If `true`, will add `x_ctx_feed_id` property to each returend object. Note, setting to `true` will break the objects in the response from being pure STIX 2.1. Default is `false`"
-        )
-        sort = ChoiceFilter(
-            choices=[(f, f) for f in SEMANTIC_SEARCH_SORT_FIELDS],
-            help_text="attribute to sort by",
-        )
-        name = CharFilter()
 
+    def get_queryset(self):
+        from django.db.models import F, Window
+        from django.db.models.functions import RowNumber
+
+        qs = models.NewObjectValue.objects.annotate(
+            rn=Window(
+                expression=RowNumber(),
+                partition_by=[F("stix_id")],
+                order_by=F("modified").asc(),  # or whatever defines "first"
+            ),
+        ).filter(rn=1)
+        qs = qs.annotate(
+            value=FirstValue("values"),
+        )
+        return qs
+    
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        ctx.update(objects=ArangoDBHelper('semantic_search', self.request).get_context_for_objects(self.object_ids))
+        return ctx
+    
+    # def get_serializer(self, page, *args, **kwargs):
+    #     return super().get_serializer(page,*args, **kwargs)
+    
     def list(self, request, *args, **kwargs):
-        return ArangoDBHelper("semantic_search_view", request).semantic_search()
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        self.object_ids = [obj.stix_id for obj in page]
+        self.serializer_class = values_serializers.ValuesAsStixSerializer
+        serializer = self.get_serializer(page, many=True)
+        return self.get_paginated_response(serializer.data)
 
 
 @extend_schema_view(
@@ -689,33 +731,25 @@ class SchemaViewCached(SpectacularAPIView):
         )
 
 
-class ObjectValueFilterSet(FilterSet):
-    """Filter set for ObjectValue search."""
-
-    value = CharFilter(
-        field_name="value",
-        lookup_expr="icontains",
-        help_text="Search for values (full-text search)",
-    )
-
-    class Meta:
-        model = models.ObjectValue
-        fields = ["value"]
-
-
 class ObjectFeedsView(mixins.ListModelMixin, viewsets.GenericViewSet):
-    queryset = models.ObjectValue.objects.all()
+    queryset = models.NewObjectValue.objects.all()
     openapi_tags = ["Search"]
     serializer_class = serializers.ObjectFeedsDetailSerializer
     lookup_url_kwarg = "object_id"
+
     def get_queryset(self):
         qs = self.queryset
         return qs
-    
+
     @decorators.action(detail=True, methods=["GET"])
     def feeds(self, request, object_id):
-        obj = get_list_or_404(models.ObjectValue, stix_id=object_id)[0]
-        feed_ids = self.get_queryset().filter(stix_id=obj.stix_id).values_list("feed_id", flat=True).distinct()
+        obj = get_list_or_404(models.NewObjectValue, stix_id=object_id)[0]
+        feed_ids = (
+            self.get_queryset()
+            .filter(stix_id=obj.stix_id)
+            .values_list("feed_id", flat=True)
+            .distinct()
+        )
         obj.feeds = models.Feed.objects.filter(id__in=feed_ids)
         serializer = serializers.ObjectFeedsDetailSerializer(obj)
         return Response(serializer.data)

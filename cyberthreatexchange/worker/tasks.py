@@ -83,7 +83,7 @@ def get_existing_object_pks(feed, object_ids):
 
 
 def make_uploads(job_id, objects, warnings=None, arango_extra=None):
-    from cyberthreatexchange.server.values import save_object_values
+    from cyberthreatexchange.server.values.values import save_object_values
     job = Job.objects.get(pk=job_id)
     feed = job.feed
     s2a = Stix2Arango(
