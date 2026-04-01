@@ -171,7 +171,6 @@ class NewObjectValue(models.Model):
         indexes = [
             models.Index(fields=['stix_id', 'modified']),
             models.Index(fields=['feed', 'stix_id']),
-            postgres_indexes.GinIndex(fields=['values'], name='ctx_values_concat_idx', opclasses=['jsonb_values_concat(values)']),
         ]
 
     def __str__(self):
