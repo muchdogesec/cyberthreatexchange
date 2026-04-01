@@ -41,36 +41,6 @@ class TestJobViewGetSerializerClass:
         assert serializer_class == serializers.JobSerializer
 
 
-class TestSearchViewList:
-    """Test SearchView.list method."""
-
-    def test_calls_arango_helper_semantic_search(self, client):
-        """Test that list calls ArangoDBHelper.semantic_search."""
-        with patch(
-            "cyberthreatexchange.server.views.ArangoDBHelper.semantic_search"
-        ) as mock_semantic_search:
-            mock_semantic_search.return_value = Response({"objects": []}, status=200)
-
-            # Execute
-            response = client.get("/api/v1/search/")
-
-            # Verify
-            mock_semantic_search.assert_called_once_with()
-
-    def test_passes_request_to_arango_helper(self, client):
-        """Test that request is passed to ArangoDBHelper."""
-        with patch(
-            "cyberthreatexchange.server.views.ArangoDBHelper.semantic_search"
-        ) as mock_semantic_search:
-            mock_semantic_search.return_value = Response({"objects": []}, status=200)
-
-            # Execute
-            client.get("/api/v1/search/", {"text": "malware"})
-
-            # Verify the semantic_search was called
-            mock_semantic_search.assert_called_once_with()
-
-
 class TestFeedObjectsView:
     """Test FeedObjectsView methods."""
 

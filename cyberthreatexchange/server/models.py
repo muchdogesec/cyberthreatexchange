@@ -10,12 +10,14 @@ from django.dispatch import receiver
 from dogesec_commons.objects.helpers import ArangoDBHelper
 from django.db.models.signals import post_save, post_delete
 from django.contrib.postgres.fields import ArrayField
+import django.contrib.postgres.indexes as postgres_indexes
 import stix2
 from stix2arango.stix2arango import Stix2Arango
 from dogesec_commons.identity.models import Identity
 from cryptography.fernet import Fernet
 import base64
 from django.core.exceptions import ImproperlyConfigured
+from cyberthreatexchange.server.values import filters as value_filters
 
 from cyberthreatexchange.worker.populate_dbs import setup_arangodb, setup_semantic_search_view
 
@@ -146,39 +148,54 @@ def delete_collections(sender, instance: Feed, **kwargs):
         graph.delete_edge_definition(instance.collection_name+'_edge_collection', purge=True)
         graph.delete_vertex_collection(instance.collection_name+'_vertex_collection', purge=True)
     except BaseException as e:
-        logging.error(f"cannot delete collection `{instance.collection_name}`: {e}") 
-
-from django.contrib.postgres.search import SearchVectorField
-
-class ObjectValue(models.Model):
+        logging.error(f"cannot delete collection `{instance.collection_name}`: {e}")
+    
+class NewObjectValue(models.Model):
     """
-    Stores searchable values from STIX objects including their references.
-    Enables searching by value and finding objects where referenced objects match.
-    Unique constraint: (feed, stix_id, modified, value, value_type, is_ref, ref_stix_id)
+    New version of ObjectValue with JSONB field for values and optimized indexing.
+    Stores all values for a STIX object in a single record for easier updates and queries.
+    Unique constraint: (feed, stix_id, modified)
     """
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     feed = models.ForeignKey(Feed, on_delete=models.CASCADE)
-    stix_id = models.CharField(max_length=255)
-    stix_type = models.CharField(max_length=100)
-    modified = models.DateTimeField()
-    value = models.TextField(db_index=True)
-    value_type = models.CharField(max_length=100)
-    is_ref = models.BooleanField(default=False)
-    ref_stix_id = models.CharField(max_length=255, null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    stix_id = models.CharField(max_length=128, db_index=True)
+    type = models.CharField(max_length=64, db_index=True)
+    modified = models.DateTimeField(null=True)
+    created = models.DateTimeField(null=True)
+    values = models.JSONField()  # Store all values in a JSON field
+    added_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = [['feed', 'stix_id', 'modified', 'value', 'value_type', 'is_ref', 'ref_stix_id']]
+        unique_together = [['feed', 'stix_id']]
         indexes = [
-            models.Index(fields=['feed', 'value']),
-            models.Index(fields=['feed', 'stix_id', 'modified']),
-            models.Index(fields=['feed', 'ref_stix_id']),
-            models.Index(fields=['feed', 'is_ref']),
+            models.Index(fields=['stix_id', 'modified']),
+            models.Index(fields=['feed', 'stix_id']),
         ]
 
     def __str__(self):
-        return f"{self.stix_id} ({self.value_type}): {self.value}"
+        return f"ObjectValue(stix_id={self.stix_id}, type={self.stix_type}, modified={self.modified}, feed={self.feed.id}, values={len(self.values)})"
 
+class ObjectVersion(models.Model):
+    """
+    Stores metadata about each version of a STIX object for history and version tracking.
+    Unique constraint: (feed, stix_id, modified)
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
+    feed = models.ForeignKey(Feed, on_delete=models.CASCADE)
+    stix_id = models.CharField(max_length=255, db_index=True)
+    modified = models.DateTimeField(null=True)
+    added_at = models.DateTimeField()
+
+    class Meta:
+        unique_together = [['feed', 'stix_id', 'modified']]
+        indexes = [
+            models.Index(fields=['feed', 'stix_id']),
+            models.Index(fields=['feed', 'modified']),
+        ]
+
+    def __str__(self):
+        return f"Object(id={self.stix_id}, modified={self.modified}, feed={self.feed.id})"
 
 class JobTypes(models.TextChoices):
     BUNDLE_UPLOAD  = "bundle-upload"
