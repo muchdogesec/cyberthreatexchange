@@ -1,5 +1,7 @@
+from collections import defaultdict
 import json
 import logging
+import sys
 import typing
 import uuid
 from django.conf import settings
@@ -10,6 +12,7 @@ from django.dispatch import receiver
 from dogesec_commons.objects.helpers import ArangoDBHelper
 from django.db.models.signals import post_save, post_delete
 from django.contrib.postgres.fields import ArrayField
+from django.db.models.functions import Substr
 import django.contrib.postgres.indexes as postgres_indexes
 import stix2
 from stix2arango.stix2arango import Stix2Arango
@@ -163,18 +166,92 @@ class NewObjectValue(models.Model):
     modified = models.DateTimeField(null=True)
     created = models.DateTimeField(null=True)
     values = models.JSONField()  # Store all values in a JSON field
+    is_dupe = models.BooleanField(default=True)
+    values_concat = models.GeneratedField(
+        expression=models.Func(models.F("values"), function="jsonb_values_concat"),
+        output_field=models.TextField(),
+        db_persist=True,
+        null=True,
+        blank=True,
+    )
+    values_sort = models.GeneratedField(
+        expression=models.Func(models.F("values"), function="jsonb_sort_value"),
+        output_field=models.CharField(max_length=32),
+        db_persist=True,
+        null=True,
+        blank=True,
+    )
+    values_list = models.GeneratedField(
+        expression=models.Func(models.F("values"), function="jsonb_values_list"),
+        output_field=ArrayField(base_field=models.TextField()),
+        db_persist=True,
+        null=True,
+        blank=True,
+    )
     added_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         unique_together = [['feed', 'stix_id']]
         indexes = [
+            models.Index(fields=['is_dupe'], name='ctx_nov_empty_query_idx'),
             models.Index(fields=['stix_id', 'modified']),
             models.Index(fields=['feed', 'stix_id']),
+            models.Index(fields=['type', 'stix_id'], name='ctx_nov_type_stix_idx', condition=models.Q(is_dupe=False)),
+            models.Index(fields=['created', 'type'], name='ctx_nov_created_type_idx', condition=models.Q(is_dupe=False)),
+            models.Index(fields=['modified', 'type'], name='ctx_nov_modified_type_idx', condition=models.Q(is_dupe=False)),
+            models.Index(fields=['values_sort', 'type'], name='ctx_nov_values_concat_idx', condition=models.Q(is_dupe=False)),
         ]
 
     def __str__(self):
-        return f"ObjectValue(stix_id={self.stix_id}, type={self.stix_type}, modified={self.modified}, feed={self.feed.id}, values={len(self.values)})"
+        return f"ObjectValue(stix_id={self.stix_id}, type={self.type}, modified={self.modified}, feed={self.feed.id}, values={len(self.values)})"
+
+
+def _refresh_stix_dedupe_state(stix_ids: str | list[str] | set[str] | tuple[str, ...]) -> int:
+    'returns number of updated rows'
+    if isinstance(stix_ids, str):
+        stix_ids = [stix_ids]
+    stix_ids = list(set(stix_ids))
+    if not stix_ids:
+        return 0
+
+    scoped = NewObjectValue.objects.filter(stix_id__in=stix_ids)
+    if not scoped.exists():
+        return 0
+    
+    from django.db.models import Window
+    from django.db.models.functions import RowNumber
+    from datetime import datetime, UTC
+    # Keep one canonical row per STIX ID and mark all others as duplicates.
+    objs = []
+    seen = set()
+    
+    for obj in scoped.order_by('-modified').only('id', 'stix_id', 'modified', 'is_dupe'):
+        orig_is_dupe = obj.is_dupe
+        if obj.stix_id in seen:
+            obj.is_dupe = True
+        else:
+            obj.is_dupe = False
+        seen.add(obj.stix_id)
+        if orig_is_dupe != obj.is_dupe:
+            objs.append(obj)
+    return NewObjectValue.objects.bulk_update(objs, ['is_dupe'], batch_size=1000)
+
+def refresh_dupes_on_feed_batched(feed_id: str, chunk_size: int = 10_000):
+    stix_ids = list(set(NewObjectValue.objects.filter(feed_id=feed_id).values_list('stix_id', flat=True)))
+    count = len(stix_ids)
+    updated = 0
+    for i in range(0, count, chunk_size):
+        print('.', end='', flush=True)
+        batch_ids = stix_ids[i:i+chunk_size]
+        updated += _refresh_stix_dedupe_state(batch_ids)
+        print('+', end='', flush=True)
+    return count, updated
+
+
+@receiver(post_delete, sender=Feed)
+def rebalance_newobjectvalue_dupes(sender, instance: Feed, **kwargs):
+    refresh_dupes_on_feed_batched(instance.id)
 
 class ObjectVersion(models.Model):
     """

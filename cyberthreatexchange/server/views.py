@@ -6,7 +6,6 @@ import itertools
 import logging
 import textwrap
 
-from cyberthreatexchange.server.values.filters import FirstValue
 import cyberthreatexchange.server.values.serializers as values_serializers
 from cyberthreatexchange.worker.utils import md5_hash
 
@@ -594,14 +593,12 @@ class SearchView(mixins.ListModelMixin, viewsets.GenericViewSet):
 
     class filterset_class(FilterSet):
         value = CharFilter(
-            lookup_expr="jsonb_vcontains",
-            field_name="values",
+            method="filter_value",
             help_text="The search query. e.g `denial of service`",
         )
-        value_exact = CharFilter(
-            lookup_expr="jsonb_vexact",
-            field_name="values",
-            help_text="The search query, but only return results where the value matches exactly. e.g `denial of service` will not match `denial of service against ACME Corp`, but will match `denial of service`",
+        value_exact = BooleanFilter(
+            method="filter_noop",
+            help_text="Set to `true` to only return exact matches on the `value` field. Default behaviour is wildcard search.",
         )
         types = ChoiceCSVFilter(
             lookup_expr="in",
@@ -620,20 +617,23 @@ class SearchView(mixins.ListModelMixin, viewsets.GenericViewSet):
             help_text="Filter results by containing the identity_id of the feed's author.",
         )
 
-    def get_queryset(self):
-        from django.db.models import F, Window
-        from django.db.models.functions import RowNumber
+        def filter_value(self, queryset, name, value):
+            if not value:
+                return queryset
 
-        qs = models.NewObjectValue.objects.annotate(
-            rn=Window(
-                expression=RowNumber(),
-                partition_by=[F("stix_id")],
-                order_by=F("modified").asc(),  # or whatever defines "first"
-            ),
-        ).filter(rn=1)
-        qs = qs.annotate(
-            value=FirstValue("values"),
-        )
+            value_exact = self.data.get("value_exact", "false").lower() == "true"
+            if value_exact:
+                return queryset.filter(values_list__contains=[value.lower()])
+            return queryset.filter(values_concat__contains=value.lower())
+
+        def filter_noop(self, queryset, name, value):
+            return queryset
+
+    def get_queryset(self):
+        from django.db.models import F
+
+        qs = models.NewObjectValue.objects.filter(is_dupe=False)
+        qs = qs.alias(value=F("values_sort"))
         return qs
     
     def get_serializer_context(self):

@@ -16,7 +16,7 @@ from django.core.management.base import BaseCommand
 from django.conf import settings
 from arango import ArangoClient
 
-from cyberthreatexchange.server.models import Feed, NewObjectValue, ObjectVersion
+from cyberthreatexchange.server.models import Feed, NewObjectValue, ObjectVersion, refresh_dupes_on_feed_batched
 from cyberthreatexchange.server.values.values import save_object_values
 
 
@@ -49,12 +49,17 @@ class Command(BaseCommand):
             action="store_true",
             help="Show what would be processed without actually indexing",
         )
+        parser.add_argument(
+            "--refresh-dupes",
+            action="store_true",
+            help="Refresh deduplication flags for all STIX IDs and exit. WARNING: This can be slow for large datasets.",
+        )
 
     def handle(self, *args, **options):
         feed_ids = options.get("feeds")
         batch_size = options.get("batch_size")
         dry_run = options.get("dry_run")
-
+        refresh_dupes = options.get("refresh_dupes")
         if batch_size <= 0:
             raise ValueError("--batch-size must be greater than 0")
 
@@ -85,9 +90,10 @@ class Command(BaseCommand):
 
         total_objects_indexed = 0
         failed_feeds = []
+        total_feeds = feed_queryset.count()
 
-        for feed in feed_queryset:
-            self.stdout.write(f"\nProcessing feed: {feed.id} ({feed.name})")
+        for i, feed in enumerate(feed_queryset):
+            self.stdout.write(f"\nProcessing feed {feed.id} ({feed.name}) [{i+1}/{total_feeds}]")
             self.stdout.write(f"Collection: {feed.vertex_collection}")
 
             try:
@@ -100,9 +106,21 @@ class Command(BaseCommand):
                     )
                     continue
 
-                if not dry_run:
+                if not (dry_run or refresh_dupes):
                     NewObjectValue.objects.filter(feed=feed).delete()
                     ObjectVersion.objects.filter(feed=feed).delete()
+
+                if refresh_dupes:
+                    self.stdout.write(
+                        self.style.WARNING(
+                            "Refreshing deduplication flags for all STIX IDs after indexing (can be slow)"
+                        )
+                    )
+                    total_ov, updated_count = refresh_dupes_on_feed_batched(feed_id=str(feed.id))
+                    self.stdout.write(self.style.SUCCESS("Deduplication refresh complete [{}/{} updated]".format(updated_count, total_ov)))
+                    continue
+
+
 
                 feed_objects_indexed = 0
                 indexed_batches = 0

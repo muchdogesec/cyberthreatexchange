@@ -6,7 +6,11 @@ import logging
 
 from dogesec_commons.objects.helpers import TLP_VISIBLE_TO_ALL
 from stix2arango.stix2arango.stix2arango import post_upload_hook
-from cyberthreatexchange.server.models import NewObjectValue, ObjectVersion
+from cyberthreatexchange.server.models import (
+    NewObjectValue,
+    ObjectVersion,
+    _refresh_stix_dedupe_state,
+)
 
 
 def get_file_values(obj):
@@ -210,9 +214,13 @@ def save_object_values(stix_objects, feed_id: str) -> int:
         all_values_data_deduped.values(),
         update_conflicts=True,
         batch_size=1000,
-        update_fields=["modified", "values", "updated_at"],
+        update_fields=["modified", "created", "values", "updated_at"],
         unique_fields=["feed", "stix_id"],
     )
+
+    # Recompute cross-feed dedupe flags in bulk for STIX IDs touched in this batch.
+    _refresh_stix_dedupe_state([f.stix_id for f in created])
+
     ObjectVersion.objects.bulk_create(
         all_versions_data,
         ignore_conflicts=True,
