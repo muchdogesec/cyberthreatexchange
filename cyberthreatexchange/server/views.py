@@ -581,7 +581,23 @@ class FeedObjectsView(viewsets.GenericViewSet):
             This endpoint is particularly useful when you don't know the objects you want, or if the concept you're interested in is covered by a framework.
             """
         ),
-    )
+    ),
+    feeds=extend_schema(
+        summary="Get feeds containing an object",
+        description=textwrap.dedent(
+            """
+            Get a list of all feeds containing a specific object.
+            """
+        ),
+        parameters=[
+            OpenApiParameter(
+                "object_id",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.PATH,
+                description="The  STIX ID of the Object.",
+            ),
+        ],
+    ),
 )
 class SearchView(mixins.ListModelMixin, viewsets.GenericViewSet):
     serializer_class = serializers.StixObjectsPlaceholderSerializer(many=True)
@@ -635,15 +651,19 @@ class SearchView(mixins.ListModelMixin, viewsets.GenericViewSet):
             value=FirstValue("values"),
         )
         return qs
-    
+
     def get_serializer_context(self):
         ctx = super().get_serializer_context()
-        ctx.update(objects=ArangoDBHelper('semantic_search', self.request).get_context_for_objects(self.object_ids))
+        ctx.update(
+            objects=ArangoDBHelper(
+                "semantic_search", self.request
+            ).get_context_for_objects(self.object_ids)
+        )
         return ctx
-    
+
     # def get_serializer(self, page, *args, **kwargs):
     #     return super().get_serializer(page,*args, **kwargs)
-    
+
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
         page = self.paginate_queryset(queryset)
@@ -651,9 +671,12 @@ class SearchView(mixins.ListModelMixin, viewsets.GenericViewSet):
         self.serializer_class = values_serializers.ValuesAsStixSerializer
         serializer = self.get_serializer(page, many=True)
         return self.get_paginated_response(serializer.data)
-    
 
-    @decorators.action(detail=True, methods=["GET"], serializer_class=serializers.ObjectFeedsDetailSerializer)
+    @decorators.action(
+        detail=True,
+        methods=["GET"],
+        serializer_class=serializers.ObjectFeedsDetailSerializer,
+    )
     def feeds(self, request, object_id):
         obj = get_list_or_404(models.NewObjectValue, stix_id=object_id)[0]
         feed_ids = (
