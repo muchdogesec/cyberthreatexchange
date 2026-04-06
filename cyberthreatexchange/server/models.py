@@ -226,7 +226,7 @@ def _refresh_stix_dedupe_state(stix_ids: str | list[str] | set[str] | tuple[str,
     objs = []
     seen = set()
     
-    for obj in scoped.order_by('-modified').only('id', 'stix_id', 'modified', 'is_dupe'):
+    for obj in scoped.order_by('-stix_id', '-modified').only('id', 'stix_id', 'modified', 'is_dupe'):
         orig_is_dupe = obj.is_dupe
         if obj.stix_id in seen:
             obj.is_dupe = True
