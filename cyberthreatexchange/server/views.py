@@ -7,6 +7,7 @@ import logging
 import textwrap
 
 import cyberthreatexchange.server.values.serializers as values_serializers
+from cyberthreatexchange.server.values.values import ALL_KNOWLEDGEBASES
 from cyberthreatexchange.worker.utils import md5_hash
 
 SEMANTIC_SEARCH_SORT_FIELDS = [
@@ -615,6 +616,12 @@ class SearchView(mixins.ListModelMixin, viewsets.GenericViewSet):
             lookup_expr="in",
             field_name="feed__identity_id",
             help_text="Filter results by containing the identity_id of the feed's author.",
+        )
+        knowledgebases = ChoiceCSVFilter(
+            lookup_expr="in",
+            field_name="knowledgebase",
+            choices=[(f, f) for f in ALL_KNOWLEDGEBASES],
+            help_text="Filter results by containing the knowledgebase assigned to the objects.",
         )
 
         def filter_value(self, queryset, name, value):

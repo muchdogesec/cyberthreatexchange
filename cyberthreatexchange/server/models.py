@@ -167,6 +167,7 @@ class NewObjectValue(models.Model):
     created = models.DateTimeField(null=True)
     values = models.JSONField()  # Store all values in a JSON field
     is_dupe = models.BooleanField(default=True)
+    knowledgebase = models.CharField(max_length=64, null=True, blank=True)
     values_concat = models.GeneratedField(
         expression=models.Func(models.F("values"), function="jsonb_values_concat"),
         output_field=models.TextField(),
@@ -198,9 +199,12 @@ class NewObjectValue(models.Model):
             models.Index(fields=['stix_id', 'modified']),
             models.Index(fields=['feed', 'stix_id']),
             models.Index(fields=['type', 'stix_id'], name='ctx_nov_type_stix_idx', condition=models.Q(is_dupe=False)),
-            models.Index(fields=['created', 'type'], name='ctx_nov_created_type_idx', condition=models.Q(is_dupe=False)),
-            models.Index(fields=['modified', 'type'], name='ctx_nov_modified_type_idx', condition=models.Q(is_dupe=False)),
-            models.Index(fields=['values_sort', 'type'], name='ctx_nov_values_concat_idx', condition=models.Q(is_dupe=False)),
+            models.Index(fields=['created', 'type', 'feed_id'], name='ctx_nov_created_type_idx', condition=models.Q(is_dupe=False)),
+            models.Index(fields=['modified', 'type', 'feed_id'], name='ctx_nov_modified_type_idx', condition=models.Q(is_dupe=False)),
+            models.Index(fields=['values_sort', 'type', 'feed_id'], name='ctx_nov_values_concat_idx', condition=models.Q(is_dupe=False)),
+            models.Index(fields=['created', 'knowledgebase', 'feed_id'], name='ctx_nov_created_kb_idx', condition=models.Q(is_dupe=False)),
+            models.Index(fields=['modified', 'knowledgebase', 'feed_id'], name='ctx_nov_modified_kb_idx', condition=models.Q(is_dupe=False)),
+            models.Index(fields=['values_sort', 'knowledgebase', 'feed_id'], name='ctx_nov_values_kb_idx', condition=models.Q(is_dupe=False)),
         ]
 
     def __str__(self):

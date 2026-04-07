@@ -31,24 +31,41 @@ class Migration(migrations.Migration):
             name='values_sort',
             field=models.GeneratedField(db_persist=True, expression=models.Func(models.F('values'), function='jsonb_sort_value'), null=True, output_field=models.CharField(max_length=32)),
         ),
+        migrations.AddField(
+            model_name='newobjectvalue',
+            name='knowledgebase',
+            field=models.CharField(blank=True, max_length=64, null=True),
+        ),
+        migrations.AddIndex(
+            model_name='newobjectvalue',
+            index=models.Index(fields=['is_dupe'], name='ctx_nov_empty_query_idx'),
+        ),
         migrations.AddIndex(
             model_name='newobjectvalue',
             index=models.Index(condition=models.Q(('is_dupe', False)), fields=['type', 'stix_id'], name='ctx_nov_type_stix_idx'),
         ),
         migrations.AddIndex(
             model_name='newobjectvalue',
-            index=models.Index(condition=models.Q(('is_dupe', False)), fields=['created', 'type'], name='ctx_nov_created_type_idx'),
+            index=models.Index(condition=models.Q(('is_dupe', False)), fields=['created', 'type', 'feed_id'], name='ctx_nov_created_type_idx'),
         ),
         migrations.AddIndex(
             model_name='newobjectvalue',
-            index=models.Index(condition=models.Q(('is_dupe', False)), fields=['modified', 'type'], name='ctx_nov_modified_type_idx'),
+            index=models.Index(condition=models.Q(('is_dupe', False)), fields=['modified', 'type', 'feed_id'], name='ctx_nov_modified_type_idx'),
         ),
         migrations.AddIndex(
             model_name='newobjectvalue',
-            index=models.Index(condition=models.Q(('is_dupe', False)), fields=['values_sort', 'type'], name='ctx_nov_values_concat_idx'),
+            index=models.Index(condition=models.Q(('is_dupe', False)), fields=['values_sort', 'type', 'feed_id'], name='ctx_nov_values_concat_idx'),
         ),
         migrations.AddIndex(
             model_name='newobjectvalue',
-            index=models.Index(fields=['is_dupe'], name='ctx_nov_empty_query_idx'),
+            index=models.Index(condition=models.Q(('is_dupe', False)), fields=['created', 'knowledgebase', 'feed_id'], name='ctx_nov_created_kb_idx'),
+        ),
+        migrations.AddIndex(
+            model_name='newobjectvalue',
+            index=models.Index(condition=models.Q(('is_dupe', False)), fields=['modified', 'knowledgebase', 'feed_id'], name='ctx_nov_modified_kb_idx'),
+        ),
+        migrations.AddIndex(
+            model_name='newobjectvalue',
+            index=models.Index(condition=models.Q(('is_dupe', False)), fields=['values_sort', 'knowledgebase', 'feed_id'], name='ctx_nov_values_kb_idx'),
         ),
     ]

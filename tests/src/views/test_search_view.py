@@ -5,6 +5,7 @@ Tests for ObjectFeedsView endpoint (/api/v1/search/<object_id>/feeds/)
 import pytest
 from rest_framework import status
 from cyberthreatexchange.server.models import Feed, NewObjectValue
+from cyberthreatexchange.server.views import SearchView
 from tests.utils import Transport
 from django.utils import timezone
 
@@ -105,6 +106,68 @@ class TestObjectFeedsView:
         api_schema["/api/v1/search/{object_id}/feeds/"]["GET"].validate_response(
             Transport.get_st_response(response)
         )
+
+
+@pytest.mark.django_db
+class TestSearchKnowledgebaseFilter:
+    def test_filterset_filters_by_single_knowledgebase(self, feed1, feed2):
+        shared_modified = timezone.now()
+
+        NewObjectValue.objects.create(
+            feed=feed1,
+            stix_id="attack-pattern--aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            type="attack-pattern",
+            modified=shared_modified,
+            knowledgebase="enterprise-attack",
+            values={"name": "Phishing", "kb_id": "T1566"},
+            is_dupe=False,
+        )
+        NewObjectValue.objects.create(
+            feed=feed2,
+            stix_id="weakness--bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            type="weakness",
+            modified=shared_modified,
+            knowledgebase="cwe",
+            values={"name": "Improper Input Validation", "kb_id": "CWE-20"},
+            is_dupe=False,
+        )
+
+        qs = SearchView.filterset_class(
+            data={"knowledgebases": "cwe"},
+            queryset=NewObjectValue.objects.all(),
+        ).qs
+
+        assert qs.count() == 1
+        assert qs.first().knowledgebase == "cwe"
+
+    def test_filterset_filters_by_multiple_knowledgebases(self, feed1, feed2):
+        shared_modified = timezone.now()
+
+        NewObjectValue.objects.create(
+            feed=feed1,
+            stix_id="attack-pattern--cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+            type="attack-pattern",
+            modified=shared_modified,
+            knowledgebase="enterprise-attack",
+            values={"name": "Discovery", "kb_id": "T1087"},
+            is_dupe=False,
+        )
+        NewObjectValue.objects.create(
+            feed=feed2,
+            stix_id="weakness--dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+            type="weakness",
+            modified=shared_modified,
+            knowledgebase="cwe",
+            values={"name": "Memory Corruption", "kb_id": "CWE-119"},
+            is_dupe=False,
+        )
+
+        qs = SearchView.filterset_class(
+            data={"knowledgebases": "enterprise-attack,cwe"},
+            queryset=NewObjectValue.objects.all(),
+        ).qs
+
+        assert qs.count() == 2
 
     def test_get_feeds_for_object_in_single_feed(
         self, client, object_in_single_feed, feed1, api_schema

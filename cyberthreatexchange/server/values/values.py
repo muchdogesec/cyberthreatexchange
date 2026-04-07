@@ -13,10 +13,76 @@ from cyberthreatexchange.server.models import (
 )
 
 
+def external_id(obj):
+    return [
+        ref.get("external_id")
+        for ref in obj.get("external_references", [])
+        if ref.get("external_id")
+    ][:1]
+
+
+def guess_kb_data(obj: dict) -> tuple[str | None, dict]:
+    """
+    Infer knowledgebase only for ATT&CK objects and weakness.
+
+    Returns:
+        (knowledgebase, extra_values)
+        knowledgebase: one of enterprise-attack/mobile-attack/ics-attack/cwe, or None
+        extra_values: includes kb_id when available
+    """
+    obj_type = obj.get("type")
+    kb_name = None
+
+    extra = {}
+
+    match obj_type:
+        case "weakness":
+            kb_name = "cwe"
+    # Check for MITRE ATT&CK domains
+    x_mitre_domains = obj.get("x_mitre_domains", [])
+    if x_mitre_domains:
+        domain = x_mitre_domains[0]
+        if domain in ["enterprise-attack", "mobile-attack", "ics-attack"]:
+            kb_name = domain
+
+    # Check external references for other TTP types
+    external_refs = obj.get("external_references", [])
+    if external_refs:
+        source_name = external_refs[0].get("source_name", "")
+        ttp_source_name_mapping = {
+            "capec": "capec",
+            "mitre-atlas": "atlas",
+            "DISARM": "disarm",
+        }
+        if source_name in ttp_source_name_mapping:
+            kb_name = ttp_source_name_mapping[source_name]
+    if kb_name and (kb_ids := external_id(obj)):
+        extra["kb_id"] = kb_ids[0]
+    return kb_name, extra
+
+
 def get_file_values(obj):
     values = {}
-    if "name" in obj:
-        values["name"] = obj["name"]
+    for k in ["name", "mime_type"]:
+        if k in obj:
+            values[k] = obj[k]
+    if "hashes" in obj:
+        values.update({k.lower().replace("-", ""): v for k, v in obj["hashes"].items()})
+    return values
+
+
+def get_cert_values(obj):
+    values = {}
+    for key in [
+        "subject",
+        "issuer",
+        "serial_number",
+        "signature_algorithm",
+        "validity_not_before",
+        "validity_not_after",
+    ]:
+        if key in obj:
+            values[key] = obj[key]
     if "hashes" in obj:
         values.update({k.lower().replace("-", ""): v for k, v in obj["hashes"].items()})
     return values
@@ -68,20 +134,20 @@ sco_value_map = {
     "autonomous-system": dict(values=["number", "name"]),
     "directory": dict(values=["path"]),
     "domain-name": dict(values=["value"]),
-    "email-addr": dict(values=["value"]),
+    "email-addr": dict(values=["value", "display_name"]),
     "email-message": dict(values=["subject", "body", "message_id"]),
     "file": dict(values=get_file_values),
     "ipv4-addr": dict(values=["value"]),
     "ipv6-addr": dict(values=["value"]),
     "mac-addr": dict(values=["value"]),
     "mutex": dict(values=["name"]),
-    "network-traffic": dict(values=["protocols"]),
+    "network-traffic": dict(values=["protocols", "src_port", "dst_port", "src_packets", "dst_packets", "src_byte_count", "dst_byte_count"]),
     "process": dict(values=["command_line", "cwd"]),
-    "software": dict(values=["name", "cpe", "vendor", "version"]),
+    "software": dict(values=["name", "cpe", "vendor", "version", "swid"]),
     "url": dict(values=["value"]),
-    "user-account": dict(values=["user_id", "account_login", "account_type"]),
-    "windows-registry-key": dict(values=["key"]),
-    "x509-certificate": dict(values=["subject", "issuer", "serial_number"]),
+    "user-account": dict(values=["display_name", "account_login", "account_type", "user_id"]),
+    "windows-registry-key": dict(values=["key", "values"]),
+    "x509-certificate": dict(values=get_cert_values),
     **s2e_sco_map,
 }
 s2e_sdo_map = {
@@ -136,6 +202,15 @@ type_value_map = {
     **sro_value_map,
 }
 
+ALL_KNOWLEDGEBASES = {
+    "enterprise-attack",
+    "mobile-attack",
+    "ics-attack",
+    "cwe",
+    "capec",
+    "atlas",
+    "disarm",
+}
 
 def extract_object_metadata(obj: dict) -> dict:
     """
@@ -152,6 +227,7 @@ def extract_object_metadata(obj: dict) -> dict:
     """
     obj_id = obj["id"]
     obj_type = obj["type"]
+    kb_name, kb_extra = guess_kb_data(obj)
 
     # Get the value configuration for this object type
     type_config = type_value_map.get(obj_type, {})
@@ -159,10 +235,12 @@ def extract_object_metadata(obj: dict) -> dict:
 
     # Extract values using get_values function
     values = get_values(obj, value_keys) or {}
+    values.update(kb_extra)
 
     retval = {
         "stix_id": obj_id,
         "type": obj_type,
+        "knowledgebase": kb_name,
         "values": values,
     }
 
@@ -214,11 +292,10 @@ def save_object_values(stix_objects, feed_id: str) -> int:
         all_values_data_deduped.values(),
         update_conflicts=True,
         batch_size=1000,
-        update_fields=["modified", "created", "values", "updated_at"],
+        update_fields=["modified", "created", "knowledgebase", "values", "updated_at"],
         unique_fields=["feed", "stix_id"],
     )
 
-    # Recompute cross-feed dedupe flags in bulk for STIX IDs touched in this batch.
     _refresh_stix_dedupe_state([f.stix_id for f in created])
 
     ObjectVersion.objects.bulk_create(
