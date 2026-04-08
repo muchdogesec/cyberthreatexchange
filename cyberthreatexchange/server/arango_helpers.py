@@ -659,6 +659,8 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
                 obj_ids.append(obj.get("id"))
         except:
             return context
+        if not obj_ids:
+            return context
 
         context.update(
             obj_ids=obj_ids,
