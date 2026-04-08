@@ -537,6 +537,8 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
                 bind_vars,
                 return_verb="KEEP(doc, @properties)",
                 use_limit=False,
+                sort_statement='',
+                scan_options="{ indexHint: 's2a_search', forceIndexHint: true }",
             )
             objects.update({x["id"]: x for x in resp})
         return objects
@@ -551,6 +553,7 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
         sort_fields=SEMANTIC_SEARCH_SORT_FIELDS,
         return_verb=None,
         use_limit=True,
+        scan_options='',
     ):
         search_filters_str = ""
         binds["@collection_or_view"] = collection_or_view
@@ -568,8 +571,12 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
         if not sort_statement:
             sort_statement = self.get_sort_stmt(sort_fields)
 
+        if scan_options:
+            scan_options = f"OPTIONS {scan_options}"
+
         query = """
             FOR doc IN @@collection_or_view
+            #OPTIONS
             #SEARCH
             #FILTER
             #sort_stmt
@@ -584,6 +591,7 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
             .replace("#return_verb", return_verb)
             .replace("#sort_stmt", sort_statement)
             .replace("#LIMIT", limit_stmt)
+            .replace("#OPTIONS", scan_options)
         )
         # print(query, binds)
         resp = self.execute_query(query, bind_vars=binds, **kwargs)
@@ -650,6 +658,8 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
                     rel_ids[obj_id] = [obj.get("source_ref"), obj.get("target_ref")]
                 obj_ids.append(obj.get("id"))
         except:
+            return context
+        if not obj_ids:
             return context
 
         context.update(

@@ -747,6 +747,10 @@ class JobView(
         identity_id = Filter(
             "feed__identity_id", label="Filter Jobs by Feed's Identity `id`"
         )
+        state = BaseCSVFilter(
+            lookup_expr="in",
+            help_text="Filter Jobs by their state. You can select multiple states. E.g. `processing,completed`",
+        )
 
     def get_serializer_class(self):
         if self.action == "retrieve":

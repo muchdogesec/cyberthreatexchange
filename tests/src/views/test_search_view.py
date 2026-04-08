@@ -94,6 +94,7 @@ class TestObjectFeedsView:
         assert response.data["id"] == object_in_multiple_feeds
         assert "feeds" in response.data
         assert len(response.data["feeds"]) == 2
+        response.data["feeds"] = sorted(response.data["feeds"], key=lambda x: x["id"])
 
         assert response.data == {
             "id": "indicator--12345678-1234-1234-1234-123456789abc",
