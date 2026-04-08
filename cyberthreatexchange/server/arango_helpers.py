@@ -537,7 +537,7 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
                 bind_vars,
                 return_verb="KEEP(doc, @properties)",
                 use_limit=False,
-                sort_fields=[],
+                sort_statement='',
                 scan_options="{ indexHint: 's2a_search', forceIndexHint: true }",
             )
             objects.update({x["id"]: x for x in resp})
