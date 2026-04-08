@@ -89,6 +89,8 @@ class TestExtractObjectMetadata:
         assert metadata["type"] == "attack-pattern"
         assert metadata["values"]["name"] == "Phishing"
         assert "T1566" in metadata["values"]["aliases"]
+        assert metadata["knowledgebase"] == "enterprise-attack"
+        assert metadata["values"]["kb_id"] == "T1566"
         assert "created" in metadata
         assert "modified" in metadata
 
@@ -109,6 +111,26 @@ class TestExtractObjectMetadata:
         assert metadata["type"] == "indicator"
         assert metadata["values"]["name"] == "Malicious IP"
         assert "ipv4-addr:value" in metadata["values"]["pattern"]
+        assert metadata["knowledgebase"] is None
+        assert "kb_id" not in metadata["values"]
+
+    def test_extract_weakness_sets_cwe_knowledgebase_and_kb_id(self):
+        weakness_obj = {
+            "type": "weakness",
+            "id": "weakness--aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            "name": "Improper Input Validation",
+            "external_references": [
+                {"source_name": "cwe", "external_id": "CWE-20"}
+            ],
+            "created": "2024-01-01T00:00:00Z",
+            "modified": "2024-01-01T00:00:00Z",
+        }
+
+        metadata = extract_object_metadata(weakness_obj)
+
+        assert metadata["type"] == "weakness"
+        assert metadata["knowledgebase"] == "cwe"
+        assert metadata["values"]["kb_id"] == "CWE-20"
 
 
 @pytest.mark.django_db
@@ -179,3 +201,29 @@ class TestSaveObjectValues:
 
         versions = models.ObjectVersion.objects.filter(feed=feed, stix_id=stix_id)
         assert versions.count() == 2
+
+    def test_save_object_values_persists_knowledgebase_and_kb_id(self, feed):
+        attack_pattern = _to_dict(
+            AttackPattern(
+                id="attack-pattern--77777777-7777-4777-8777-777777777777",
+                name="Credential Access",
+                aliases=["T1110"],
+                allow_custom=True,
+                x_mitre_domains=["enterprise-attack"],
+                external_references=[
+                    {"source_name": "mitre-attack", "external_id": "T1110"}
+                ],
+                created=datetime(2024, 1, 1, tzinfo=timezone.utc),
+                modified=datetime(2024, 1, 1, tzinfo=timezone.utc),
+            )
+        )
+
+        created_count = save_object_values([attack_pattern], feed_id=str(feed.id))
+
+        assert created_count == 1
+        stored = models.NewObjectValue.objects.get(
+            feed=feed,
+            stix_id="attack-pattern--77777777-7777-4777-8777-777777777777",
+        )
+        assert stored.knowledgebase == "enterprise-attack"
+        assert stored.values["kb_id"] == "T1110"

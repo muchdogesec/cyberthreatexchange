@@ -53,5 +53,5 @@ class FirstValue(Func):
     """
     Returns the first value from a JSONB array.
     """
-    template = "(SELECT kv.value FROM jsonb_each_text(%(expressions)s) AS kv ORDER BY kv.key LIMIT 1)"
+    function = "jsonb_first_value"
     output_field = CharField()
