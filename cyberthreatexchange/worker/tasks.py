@@ -218,4 +218,14 @@ def rerun_relationship_uploads(job: models.Job):
             r.delete()
     return objects, context.get('warnings', {})
 
-    
+
+from celery import signals
+
+@signals.worker_ready.connect
+def mark_old_jobs_as_failed(**kwargs):
+    models.Job.objects.exclude(
+        state__in=[
+            models.JobStates.COMPLETED,
+            models.JobStates.FAILED,
+        ]
+    ).update(state=models.JobStates.FAILED, errors=[{"message": "Marked as failed on startup"}])
