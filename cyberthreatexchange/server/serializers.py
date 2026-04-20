@@ -67,7 +67,7 @@ class FeedSerializer(serializers.ModelSerializer):
         help_text="The UUID of the Identity object to associate with this feed.",
         required=True,
     )
-    short_description = serializers.CharField(max_length=256, required=False, allow_blank=True)
+    short_description = serializers.CharField(max_length=256, required=True)
     description = serializers.CharField(required=False, allow_blank=True, max_length=2000)
 
     class Meta:
