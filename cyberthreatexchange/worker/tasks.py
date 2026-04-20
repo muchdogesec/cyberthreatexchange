@@ -121,11 +121,8 @@ def make_uploads(job_id, objects, warnings=None, arango_extra=None):
         objects=objects_to_process
     ))
     # Extract and save all object values to ObjectValue model
-    try:
-        created_count, deleted_count = save_object_values(objects_to_process, feed, str(feed.id))
-        logging.info(f"Saved object values for bundle: created={created_count}, deleted={deleted_count}")
-    except Exception as e:
-        logging.error(f"Failed to save object values: {e}")
+    created_count = save_object_values(objects_to_process, str(feed.id))
+    logging.info(f"Saved object values for bundle: created={created_count}")
 
 @app.task(base=CustomTask)
 def poll_taxii_connector_task(job_id=None, connector_id=None, added_after=None):
