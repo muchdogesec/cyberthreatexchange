@@ -68,7 +68,7 @@ class FeedSerializer(serializers.ModelSerializer):
         required=True,
     )
     short_description = serializers.CharField(max_length=256, required=True)
-    description = serializers.CharField(required=False, allow_blank=True, max_length=2000)
+    description = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=2000)
 
     class Meta:
         model = Feed

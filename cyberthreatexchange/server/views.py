@@ -269,7 +269,7 @@ class FeedView(viewsets.ModelViewSet):
         job = models.Job.objects.create(
             feed=feed,
             type=models.JobTypes.BUNDLE_UPLOAD,
-            state=models.JobStates.PROCESSING,
+            state=models.JobStates.PENDING,
             payload=request.data,
             warnings=(
                 list(context["warnings"].values()) if context.get("warnings") else []
