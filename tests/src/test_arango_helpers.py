@@ -55,6 +55,7 @@ class TestArangoDBHelperInit:
         assert helper.container == "custom"
 
 
+@pytest.mark.django_db
 class TestGetObjectByExternalId:
     """Test get_object_by_external_id method."""
 
@@ -92,7 +93,7 @@ class TestGetObjectByExternalId:
             assert "not_found" in str(exc), f"Expected no result for version {version} but got a different error: {exc}"
             assert not has_result, f"Expected no result for version {version} but got an error instead."
 
-
+@pytest.mark.django_db
 class TestGetVersions:
     """Test get_versions method."""
 
@@ -105,7 +106,7 @@ class TestGetVersions:
         assert response.status_code == 200
         assert response.data == dict(versions=["2020-01-15T10:00:00.000Z"])
 
-
+@pytest.mark.django_db
 class TestGetExistingObjects:
     """Test get_existing_objects method."""
 
@@ -134,6 +135,7 @@ class TestGetExistingObjects:
 
 
 # Integration-style tests that upload real data
+@pytest.mark.django_db
 class TestArangoDBHelperWithRealData:
 
     def test_get_object_by_external_id(self, arango_helper):

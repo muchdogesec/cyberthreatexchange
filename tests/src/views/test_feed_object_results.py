@@ -40,6 +40,7 @@ def test_feed(arango_helper, disconnect_signals):
     yield feed
 
 
+@pytest.mark.django_db
 class TestFeedObjectsViewList:
     """Test FeedObjectsView.list method returns all objects."""
 
@@ -88,7 +89,7 @@ class TestFeedObjectsViewList:
                     Transport.get_st_response(resp)
                 )
 
-
+@pytest.mark.django_db
 class TestFeedObjectsViewSDOs:
     """Test FeedObjectsView.sdos method returns only SDOs."""
 
@@ -145,7 +146,7 @@ class TestFeedObjectsViewSDOs:
             Transport.get_st_response(response)
         )
 
-
+@pytest.mark.django_db
 class TestFeedObjectsViewSCOs:
 
     def test_scos_includes_expected_types(self, client, test_feed, api_schema):
@@ -194,7 +195,7 @@ class TestFeedObjectsViewSCOs:
             Transport.get_st_response(response)
         )
 
-
+@pytest.mark.django_db
 class TestFeedObjectsViewSMOs:
     """Test FeedObjectsView.smos method returns only SMOs."""
 
@@ -215,7 +216,7 @@ class TestFeedObjectsViewSMOs:
             Transport.get_st_response(response)
         )
 
-
+@pytest.mark.django_db
 class TestFeedObjectsViewSROs:
 
     def test_sros_excludes_non_sro_types(self, client, test_feed, api_schema):
@@ -258,7 +259,7 @@ class TestFeedObjectsViewSROs:
             Transport.get_st_response(response)
         )
 
-
+@pytest.mark.django_db
 class TestFeedObjectsViewTypeFiltering:
     """Test that type filtering works correctly across all endpoints."""
 
@@ -321,7 +322,7 @@ class TestFeedObjectsViewTypeFiltering:
                 Transport.get_st_response(response)
             )
 
-
+@pytest.mark.django_db
 class TestFeedObjectsViewRetrieve:
     """Test FeedObjectsView.retrieve method."""
 
