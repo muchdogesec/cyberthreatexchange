@@ -15,6 +15,7 @@ import typing
 from django.utils import timezone
 from django.conf import settings
 from dateutil.parser import parse as parse_datetime
+from cyberthreatexchange.server.values.values import save_object_values
 
 from cyberthreatexchange.worker.utils import md5_hash
 from .celery import app
@@ -80,7 +81,6 @@ def get_existing_object_pks(feed, object_ids):
 
 
 def make_uploads(job_id, objects, warnings=None, arango_extra=None):
-    from cyberthreatexchange.server.values.values import save_object_values
 
     job = Job.objects.get(pk=job_id)
     feed = job.feed

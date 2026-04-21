@@ -36,7 +36,7 @@ def arango_helper():
     }
     job.payload = {"type": "bundle", "objects": all_objects}
     models.create_collection(feed)
-    with patch("cyberthreatexchange.server.models.Job.objects.get", return_value=job):
+    with (patch("cyberthreatexchange.worker.tasks.Job.objects.get", return_value=job), patch("cyberthreatexchange.worker.tasks.save_object_values")):
         upload_bundle_task.run(job_id=job.id)
     time.sleep(3)  # Wait for the data to be committed
     yield helper
