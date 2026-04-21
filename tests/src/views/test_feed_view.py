@@ -321,7 +321,7 @@ class TestFeedViewBundle:
         job = models.Job.objects.get(id=response.data['id'])
         assert str(job.feed.id) == str(feed.id)
         assert job.type == models.JobTypes.BUNDLE_UPLOAD
-        assert job.state == models.JobStates.PROCESSING
+        assert job.state == models.JobStates.PENDING
         api_schema["/api/v1/feeds/{feed_id}/bundle/"]["POST"].validate_response(
             Transport.get_st_response(response)
         )
@@ -346,7 +346,7 @@ class TestFeedViewBundle:
         
         # Verify job was created and is in processing state
         job = models.Job.objects.get(id=response.data['id'])
-        assert job.state == models.JobStates.PROCESSING
+        assert job.state == models.JobStates.PENDING
         assert len(job.errors) == 0
         
         # Verify task was called
