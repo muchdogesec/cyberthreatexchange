@@ -239,7 +239,7 @@ def _refresh_stix_dedupe_state(stix_ids: str | list[str] | set[str] | tuple[str,
         seen.add(obj.stix_id)
         if orig_is_dupe != obj.is_dupe:
             objs.append(obj)
-    return NewObjectValue.objects.bulk_update(objs, ['is_dupe'], batch_size=1000)
+    return NewObjectValue.objects.bulk_update(objs, ['is_dupe'], batch_size=500)
 
 def refresh_dupes_on_feed_batched(feed_id: str, chunk_size: int = 10_000):
     stix_ids = list(set(NewObjectValue.objects.filter(feed_id=feed_id).values_list('stix_id', flat=True)))

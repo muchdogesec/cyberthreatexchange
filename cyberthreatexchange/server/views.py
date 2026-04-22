@@ -607,8 +607,10 @@ class SearchView(mixins.ListModelMixin, viewsets.GenericViewSet):
     filter_backends = [DjangoFilterBackend, Ordering]
     ordering_fields = ["created", "modified", "value"]
     lookup_url_kwarg = "object_id"
+    lookup_field = "stix_id"
 
     class filterset_class(FilterSet):
+        stix_id = BaseCSVFilter(lookup_expr="in", help_text="Filter by STIX IDs.")
         value = CharFilter(
             method="filter_value",
             help_text="The search query. e.g `denial of service`",
