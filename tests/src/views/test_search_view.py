@@ -274,3 +274,290 @@ class TestSearchKnowledgebaseFilter:
         api_schema["/api/v1/search/{object_id}/feeds/"]["GET"].validate_response(
             Transport.get_st_response(response)
         )
+
+
+@pytest.fixture
+def search_objects_feed1(db, feed1):
+    """Create multiple test objects in feed1."""
+    shared_modified = timezone.now()
+    
+    objects = {
+        "indicator": NewObjectValue.objects.create(
+            feed=feed1,
+            stix_id="indicator--11111111-1111-1111-1111-111111111111",
+            type="indicator",
+            modified=shared_modified,
+            values={"pattern": "[ipv4-addr:value = '192.168.1.1']"},
+            is_dupe=False,
+        ),
+        "malware": NewObjectValue.objects.create(
+            feed=feed1,
+            stix_id="malware--22222222-2222-2222-2222-222222222222",
+            type="malware",
+            modified=shared_modified,
+            values={"name": "TrickBot"},
+            is_dupe=False,
+        ),
+        "attack_pattern": NewObjectValue.objects.create(
+            feed=feed1,
+            stix_id="attack-pattern--33333333-3333-3333-3333-333333333333",
+            type="attack-pattern",
+            modified=shared_modified,
+            values={"name": "Phishing"},
+            is_dupe=False,
+        ),
+        "threat_actor": NewObjectValue.objects.create(
+            feed=feed1,
+            stix_id="threat-actor--44444444-4444-4444-4444-444444444444",
+            type="threat-actor",
+            modified=shared_modified,
+            values={"name": "APT28"},
+            is_dupe=False,
+        ),
+        "vulnerability": NewObjectValue.objects.create(
+            feed=feed1,
+            stix_id="vulnerability--55555555-5555-5555-5555-555555555555",
+            type="vulnerability",
+            modified=shared_modified,
+            values={"name": "CVE-2021-44228"},
+            is_dupe=False,
+        ),
+    }
+    return objects
+
+
+@pytest.fixture
+def search_object_with_duplicate(db, feed1):
+    """Create objects to test is_dupe filtering."""
+    shared_modified = timezone.now()
+    
+    # Create a non-duplicate object (should be included)
+    obj = NewObjectValue.objects.create(
+        feed=feed1,
+        stix_id="indicator--77777777-7777-7777-7777-777777777777",
+        type="indicator",
+        modified=shared_modified,
+        values={"pattern": "[file:hashes.MD5 = 'abc123']"},
+        is_dupe=False,
+    )
+    
+    # Create a separate duplicate object (should be excluded)
+    NewObjectValue.objects.create(
+        feed=feed1,
+        stix_id="indicator--77777788-7777-7777-7777-777777777777",
+        type="indicator",
+        modified=shared_modified,
+        values={"pattern": "[file:hashes.MD5 = 'def456']"},
+        is_dupe=True,
+    )
+    
+    return obj
+
+
+@pytest.fixture
+def search_object_multiple_feeds(db, feed1, feed2):
+    """Create the same object in multiple feeds."""
+    shared_modified = timezone.now()
+    stix_id = "malware--88888888-8888-8888-8888-888888888888"
+    
+    obj1 = NewObjectValue.objects.create(
+        feed=feed1,
+        stix_id=stix_id,
+        type="malware",
+        modified=shared_modified,
+        values={"name": "Emotet"},
+        is_dupe=False,
+    )
+    obj2 = NewObjectValue.objects.create(
+        feed=feed2,
+        stix_id=stix_id,
+        type="malware",
+        modified=shared_modified,
+        values={"name": "Emotet"},
+        is_dupe=False,
+    )
+    return {"feed1": obj1, "feed2": obj2, "stix_id": stix_id}
+
+
+@pytest.fixture
+def search_tools_multiple_feeds(db, feed1, feed2):
+    """Create different tool objects in different feeds."""
+    shared_modified = timezone.now()
+    
+    obj1 = NewObjectValue.objects.create(
+        feed=feed1,
+        stix_id="tool--99999999-9999-9999-9999-999999999999",
+        type="tool",
+        modified=shared_modified,
+        values={"name": "Mimikatz"},
+        is_dupe=False,
+    )
+    obj2 = NewObjectValue.objects.create(
+        feed=feed2,
+        stix_id="tool--aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        type="tool",
+        modified=shared_modified,
+        values={"name": "Cobalt Strike"},
+        is_dupe=False,
+    )
+    return {"feed1": obj1, "feed2": obj2}
+
+
+@pytest.fixture
+def search_campaigns(db, feed1):
+    """Create campaign objects for filterset testing."""
+    shared_modified = timezone.now()
+    
+    target = NewObjectValue.objects.create(
+        feed=feed1,
+        stix_id="campaign--bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        type="campaign",
+        modified=shared_modified,
+        values={"name": "Operation Aurora"},
+        is_dupe=False,
+    )
+    other = NewObjectValue.objects.create(
+        feed=feed1,
+        stix_id="campaign--cccccccc-cccc-cccc-cccc-cccccccccccc",
+        type="campaign",
+        modified=shared_modified,
+        values={"name": "SolarWinds"},
+        is_dupe=False,
+    )
+    return {"target": target, "other": other}
+
+
+@pytest.mark.django_db
+class TestSearchStixIdFilter:
+    """Test suite for stix_id filter on SearchView list endpoint."""
+
+    @pytest.fixture(autouse=True)
+    def mock_arango_context(self, monkeypatch):
+        """Mock ArangoDBHelper.get_context_for_objects to return simple dict."""
+        def mock_get_context(self, stix_ids):
+            retval = {}
+            for stix_id in stix_ids:
+                _type, _ = stix_id.split("--", 1)
+                retval[stix_id] = {"id": stix_id, "type": _type}
+            return retval
+        
+        from cyberthreatexchange.server.arango_helpers import ArangoDBHelper
+        monkeypatch.setattr(ArangoDBHelper, "get_context_for_objects", mock_get_context)
+
+    def test_filter_by_single_stix_id(self, client, search_objects_feed1, api_schema):
+        """Test filtering search results by a single STIX ID."""
+        stix_id_1 = search_objects_feed1["indicator"].stix_id
+        
+        # Filter by single stix_id
+        response = client.get(f"/api/v1/search/?stix_id={stix_id_1}")
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert "objects" in response.data
+        assert len(response.data["objects"]) == 1
+        assert response.data["objects"][0]["id"] == stix_id_1
+        
+        # Validate against API schema
+        api_schema["/api/v1/search/"]["GET"].validate_response(
+            Transport.get_st_response(response)
+        )
+
+    def test_filter_by_multiple_stix_ids(self, client, search_objects_feed1, api_schema):
+        """Test filtering search results by multiple STIX IDs."""
+        stix_id_1 = search_objects_feed1["attack_pattern"].stix_id
+        stix_id_2 = search_objects_feed1["threat_actor"].stix_id
+        
+        # Filter by multiple stix_ids using CSV format
+        response = client.get(f"/api/v1/search/?stix_id={stix_id_1},{stix_id_2}")
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert "objects" in response.data
+        assert len(response.data["objects"]) == 2
+        
+        returned_ids = {obj["id"] for obj in response.data["objects"]}
+        assert returned_ids == {stix_id_1, stix_id_2}
+        
+        # Validate against API schema
+        api_schema["/api/v1/search/"]["GET"].validate_response(
+            Transport.get_st_response(response)
+        )
+
+    def test_filter_by_nonexistent_stix_id(self, client, api_schema):
+        """Test filtering by a STIX ID that doesn't exist."""
+        # Filter by non-existent stix_id
+        nonexistent_id = "indicator--00000000-0000-0000-0000-000000000000"
+        response = client.get(f"/api/v1/search/?stix_id={nonexistent_id}")
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert "objects" in response.data
+        assert len(response.data["objects"]) == 0
+        
+        # Validate against API schema
+        api_schema["/api/v1/search/"]["GET"].validate_response(
+            Transport.get_st_response(response)
+        )
+
+    def test_stix_id_filter_excludes_duplicates(self, client, search_object_with_duplicate, api_schema):
+        """Test that stix_id filter excludes objects marked as duplicates."""
+        stix_id = search_object_with_duplicate.stix_id
+        
+        response = client.get(f"/api/v1/search/?stix_id={stix_id}")
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert "objects" in response.data
+        # Should only return the non-duplicate
+        assert len(response.data["objects"]) == 1
+        
+        # Validate against API schema
+        api_schema["/api/v1/search/"]["GET"].validate_response(
+            Transport.get_st_response(response)
+        )
+
+    def test_stix_id_filter_with_multiple_feeds(self, client, search_object_multiple_feeds, api_schema):
+        """Test that stix_id filter returns objects from multiple feeds."""
+        stix_id = search_object_multiple_feeds["stix_id"]
+        
+        response = client.get(f"/api/v1/search/?stix_id={stix_id}")
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert "objects" in response.data
+        # Should return both instances (one from each feed)
+        assert len(response.data["objects"]) == 2
+        
+        # Validate against API schema
+        api_schema["/api/v1/search/"]["GET"].validate_response(
+            Transport.get_st_response(response)
+        )
+
+    def test_stix_id_filter_combined_with_other_filters(self, client, search_tools_multiple_feeds, feed1, api_schema):
+        """Test stix_id filter combined with feed_ids filter."""
+        stix_id_1 = search_tools_multiple_feeds["feed1"].stix_id
+        stix_id_2 = search_tools_multiple_feeds["feed2"].stix_id
+        
+        # Filter by both stix_ids but only feed1
+        response = client.get(
+            f"/api/v1/search/?stix_id={stix_id_1},{stix_id_2}&feed_ids={feed1.id}"
+        )
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert "objects" in response.data
+        # Should only return the object from feed1
+        assert len(response.data["objects"]) == 1
+        assert response.data["objects"][0]["id"] == stix_id_1
+        
+        # Validate against API schema
+        api_schema["/api/v1/search/"]["GET"].validate_response(
+            Transport.get_st_response(response)
+        )
+
+    def test_stix_id_filterset_directly(self, search_campaigns):
+        """Test the stix_id filter directly using the filterset class."""
+        stix_id_target = search_campaigns["target"].stix_id
+        
+        # Test filterset directly
+        qs = SearchView.filterset_class(
+            data={"stix_id": stix_id_target},
+            queryset=NewObjectValue.objects.all(),
+        ).qs
+        
+        assert qs.count() == 1
+        assert qs.first().stix_id == stix_id_target
