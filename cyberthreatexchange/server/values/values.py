@@ -131,7 +131,7 @@ s2e_sco_map = {
 sco_value_map = {
     # Cyber Observable Objects (SCOs)
     "artifact": dict(values=["url", "mime_type"]),
-    "autonomous-system": dict(values=["number", "name"]),
+    "autonomous-system": dict(values=["number", "name", "rir"]),
     "directory": dict(values=["path"]),
     "domain-name": dict(values=["value"]),
     "email-addr": dict(values=["value", "display_name"]),
