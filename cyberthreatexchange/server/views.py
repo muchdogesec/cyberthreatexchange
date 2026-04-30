@@ -2,9 +2,11 @@
 Views for the Cyber Threat Exchange server.
 """
 
+import hashlib
 import itertools
 import logging
 import textwrap
+import uuid
 
 import cyberthreatexchange.server.values.serializers as values_serializers
 from cyberthreatexchange.server.values.values import ALL_KNOWLEDGEBASES, type_value_map
@@ -648,7 +650,7 @@ class SearchView(mixins.ListModelMixin, viewsets.GenericViewSet):
 
             value_exact = self.data.get("value_exact", "false").lower() == "true"
             if value_exact:
-                return queryset.filter(values_list__contains=[value.lower()])
+                return queryset.filter(hashed_values_list__contains=[uuid.UUID(hashlib.md5(value.lower().encode('utf-8')).hexdigest())])
             return queryset.filter(values_concat__contains=value.lower())
 
         def filter_noop(self, queryset, name, value):

@@ -182,9 +182,9 @@ class NewObjectValue(models.Model):
         null=True,
         blank=True,
     )
-    values_list = models.GeneratedField(
-        expression=models.Func(models.F("values"), function="jsonb_values_list"),
-        output_field=ArrayField(base_field=models.TextField()),
+    hashed_values_list = models.GeneratedField(
+        expression=models.Func(models.F("values"), function="jsonb_hash_values_list"),
+        output_field=ArrayField(base_field=models.UUIDField()),
         db_persist=True,
         null=True,
         blank=True,
