@@ -202,6 +202,8 @@ type_value_map = {
     **sro_value_map,
 }
 
+ALL_TYPES_NO_SRO = [t for t in type_value_map if t not in sro_value_map]
+
 ALL_KNOWLEDGEBASES = {
     "enterprise-attack",
     "mobile-attack",
