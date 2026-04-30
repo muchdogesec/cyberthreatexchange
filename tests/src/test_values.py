@@ -227,3 +227,4 @@ class TestSaveObjectValues:
         )
         assert stored.knowledgebase == "enterprise-attack"
         assert stored.values["kb_id"] == "T1110"
+
