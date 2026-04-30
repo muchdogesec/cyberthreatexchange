@@ -7,7 +7,7 @@ import logging
 import textwrap
 
 import cyberthreatexchange.server.values.serializers as values_serializers
-from cyberthreatexchange.server.values.values import ALL_KNOWLEDGEBASES
+from cyberthreatexchange.server.values.values import ALL_KNOWLEDGEBASES, type_value_map
 from cyberthreatexchange.worker.utils import md5_hash
 
 SEMANTIC_SEARCH_SORT_FIELDS = [
@@ -622,7 +622,7 @@ class SearchView(mixins.ListModelMixin, viewsets.GenericViewSet):
         types = ChoiceCSVFilter(
             lookup_expr="in",
             field_name="type",
-            choices=[(f, f) for f in ALL_SEARCH_TYPES],
+            choices=[(f, f) for f in type_value_map],
             help_text="Filter the results by STIX Object type.",
         )
         feed_ids = BaseCSVFilter(
