@@ -48,6 +48,7 @@ from django.shortcuts import get_object_or_404, get_list_or_404
 from cyberthreatexchange.server import models, serializers
 from cyberthreatexchange.server.arango_helpers import ALL_SEARCH_TYPES, ArangoDBHelper
 from cyberthreatexchange.server.utils import Ordering, Pagination
+from dogesec_commons.utils.pagination import CompositeCursorPagination
 from drf_spectacular.views import SpectacularAPIView
 from cyberthreatexchange.worker.tasks import upload_bundle_task
 from dogesec_commons.utils.schemas import DEFAULT_400_RESPONSE, DEFAULT_404_RESPONSE
@@ -572,7 +573,7 @@ class FeedObjectsView(viewsets.GenericViewSet):
 @extend_schema_view(
     list=extend_schema(
         responses={
-            200: serializers.StixObjectsPlaceholderSerializer(many=True),
+            200: serializers.PlaceholderStixObjectSerializer(many=True),
             400: DEFAULT_400_RESPONSE,
         },
         summary="Search for objects",
@@ -602,12 +603,18 @@ class FeedObjectsView(viewsets.GenericViewSet):
     ),
 )
 class SearchView(mixins.ListModelMixin, viewsets.GenericViewSet):
-    serializer_class = serializers.StixObjectsPlaceholderSerializer(many=True)
-    serializer_class = values_serializers.ValuesSerializer
-    pagination_class = Pagination("objects")
+    pagination_class = CompositeCursorPagination("objects")
     openapi_tags = ["Search"]
     filter_backends = [DjangoFilterBackend, Ordering]
-    ordering_fields = ["created", "modified", "value"]
+    ordering_fields = {
+        "created_ascending": ["created", "id"],
+        "created_descending": ["-created", "-id"],
+        "modified_ascending": ["modified", "id"],
+        "modified_descending": ["-modified", "-id"],
+        "value_ascending": "values_sort",
+        "value_descending": "-values_sort",
+    }
+    ordering = "modified_descending"
     lookup_url_kwarg = "object_id"
     lookup_field = "stix_id"
 

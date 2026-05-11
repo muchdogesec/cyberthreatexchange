@@ -176,8 +176,12 @@ class NewObjectValue(models.Model):
         blank=True,
     )
     values_sort = models.GeneratedField(
-        expression=models.Func(models.F("values"), function="jsonb_sort_value"),
-        output_field=models.CharField(max_length=32),
+        expression=models.Func(
+            models.F("values"),
+            models.functions.Cast(models.F('id'), models.TextField()),
+            function="jsonb_values_sort"
+        ),
+        output_field=models.CharField(max_length=48),
         db_persist=True,
         null=True,
         blank=True,
@@ -199,11 +203,11 @@ class NewObjectValue(models.Model):
             models.Index(fields=['stix_id', 'modified']),
             models.Index(fields=['feed', 'stix_id']),
             models.Index(fields=['type', 'stix_id'], name='ctx_nov_type_stix_idx', condition=models.Q(is_dupe=False)),
-            models.Index(fields=['created', 'type', 'feed_id'], name='ctx_nov_created_type_idx', condition=models.Q(is_dupe=False)),
-            models.Index(fields=['modified', 'type', 'feed_id'], name='ctx_nov_modified_type_idx', condition=models.Q(is_dupe=False)),
+            models.Index(fields=['created', 'id', 'type', 'feed_id'], name='ctx_nov_created_type_idx', condition=models.Q(is_dupe=False)),
+            models.Index(fields=['modified', 'id', 'type', 'feed_id'], name='ctx_nov_modified_type_idx', condition=models.Q(is_dupe=False)),
             models.Index(fields=['values_sort', 'type', 'feed_id'], name='ctx_nov_values_concat_idx', condition=models.Q(is_dupe=False)),
-            models.Index(fields=['created', 'knowledgebase', 'feed_id'], name='ctx_nov_created_kb_idx', condition=models.Q(is_dupe=False)),
-            models.Index(fields=['modified', 'knowledgebase', 'feed_id'], name='ctx_nov_modified_kb_idx', condition=models.Q(is_dupe=False)),
+            models.Index(fields=['created', 'id', 'knowledgebase', 'feed_id'], name='ctx_nov_created_kb_idx', condition=models.Q(is_dupe=False)),
+            models.Index(fields=['modified', 'id', 'knowledgebase', 'feed_id'], name='ctx_nov_modified_kb_idx', condition=models.Q(is_dupe=False)),
             models.Index(fields=['values_sort', 'knowledgebase', 'feed_id'], name='ctx_nov_values_kb_idx', condition=models.Q(is_dupe=False)),
         ]
 
