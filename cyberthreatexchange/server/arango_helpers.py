@@ -169,13 +169,7 @@ ATTACK_SORT_FIELDS = CTI_SORT_FIELDS + ["attack_id_ascending", "attack_id_descen
 class ArangoDBHelper(DSC_ArangoDBHelper):
     max_page_size = settings.MAXIMUM_PAGE_SIZE
     page_size = settings.DEFAULT_PAGE_SIZE
-    semantic_search_view = "semantic_search_view"
-    SEMANTIC_SEARCH_QUERY_TEXT = """
-    (
-        ANALYZER(TOKENS(@search_param, "text_en") ALL IN doc.name, "text_en") OR ANALYZER(TOKENS(@search_param, "text_en") ALL IN doc.description, "text_en")
-        OR ANALYZER(TOKENS(@search_param, "text_en_no_stem_3_10p") ALL IN doc.name, "text_en_no_stem_3_10p") OR ANALYZER(TOKENS(@search_param, "text_en_no_stem_3_10p") ALL IN doc.description, "text_en_no_stem_3_10p")
-    )
-    """
+    semantic_search_view = settings.SEMANTIC_VIEW_NAME
 
     @classmethod
     def get_paginated_response(
@@ -257,13 +251,13 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
 
     default_objects: list[str] = []
 
-    def execute_query(self, query, bind_vars={}, paginate=True, container=None):
+    def execute_query(self, query, bind_vars={}, paginate=True, container=None, full_count=True):
         if paginate:
             bind_vars["offset"], bind_vars["count"] = self.get_offset_and_count(
                 self.count, self.page
             )
         cursor = self.db.aql.execute(
-            query, bind_vars=bind_vars, count=True, full_count=True
+            query, bind_vars=bind_vars, count=True, full_count=full_count
         )
         if paginate:
             return self.get_paginated_response(
@@ -404,17 +398,14 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
         ).replace("#late_filters", "\n".join(late_filters))
         return self.execute_query(query, bind_vars=binds)
 
-    def semantic_search(self, collections=None, valid_types=ALL_SEARCH_TYPES):
+    def semantic_search(self, collections=None, valid_types=ALL_SEARCH_TYPES, kwargs={}):
         valid_types = set(valid_types.copy())
         binds = {}
         search_filters = []
         extra_filters = []
-        if search_param := self.query.get("text"):
-            search_filters.append(self.SEMANTIC_SEARCH_QUERY_TEXT)
-            binds.update(search_param=search_param)
 
         if updated_since := self.query.get("updated_since"):
-            extra_filters.append("FILTER doc._record_modified >= @updated_since")
+            search_filters.append("doc._record_modified > @updated_since")
             binds.update(updated_since=updated_since)
 
         if name := self.query.get("name"):
@@ -504,6 +495,7 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
             extra_filters,
             binds,
             return_verb=keep_verb,
+            **kwargs
         )
         if show_feed_id:
             self.add_feed_id(resp.data["objects"])
@@ -604,7 +596,7 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
         objects = self.generic_query(self.semantic_search_view, [
             'doc._is_latest == TRUE',
             'doc.id IN @object_ids',
-        ], [], bind_vars, use_limit=False, sort_statement="SORT doc.modified ASC")
+        ], [], bind_vars, use_limit=False, sort_statement="// DONT SORT")
         objects_by_id = {obj["id"]: obj for obj in objects}
         return objects_by_id
 
@@ -718,3 +710,4 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
                     }
                     continue
         return context
+

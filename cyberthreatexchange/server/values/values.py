@@ -153,6 +153,9 @@ sco_value_map = {
 s2e_sdo_map = {
     "weakness": dict(values=["name"]),
     "exploit": dict(values=["name", "proof_of_concept"]),
+    "procedure": dict(values=["name"]),
+    "attack-action": dict(values=["name"]),
+    "attack-flow": dict(values=["name"]),
 }
 # mitre ATT&CK TTP types can be identified by their x_mitre_domains property or specific external references
 MITRE_VALUE_MAP = {
@@ -173,7 +176,6 @@ sdo_value_map = {
     "course-of-action": dict(values=["name"]),
     "grouping": dict(values=["name", "context"]),
     "identity": dict(values=["name"]),
-    "marking-definition": dict(values=get_marking_definitions_values),
     "incident": dict(values=["name"]),
     "indicator": dict(values=["name", "pattern"]),
     "infrastructure": dict(values=["name"]),
@@ -196,10 +198,19 @@ sro_value_map = {
     "relationship": dict(values=["relationship_type"]),
     "sighting": dict(values=["summary"]),
 }
+smo_value_map = {
+    # Metadata Objects (SMO}
+    "marking-definition": dict(values=get_marking_definitions_values),
+    "extension-definition": dict(values=["name", "description"]),
+    "language-content": dict(values=["contents"]),
+
+}
+
 type_value_map = {
     **sco_value_map,
     **sdo_value_map,
     **sro_value_map,
+    **smo_value_map,
 }
 
 ALL_TYPES_NO_SRO = [t for t in type_value_map if t not in sro_value_map]
@@ -288,6 +299,7 @@ def save_object_values(stix_objects, feed_id: str) -> int:
                 stix_id=value_obj.stix_id,
                 modified=value_obj.modified,
                 added_at=value_obj.updated_at,
+                # arango_pk=stix_obj['_id'],
             )
         )
     created = NewObjectValue.objects.bulk_create(

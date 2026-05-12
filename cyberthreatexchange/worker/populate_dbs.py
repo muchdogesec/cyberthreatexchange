@@ -41,20 +41,28 @@ def get_semantic_search_properties(db: StandardDatabase):
         ):
             links[c["name"]] = {
                 "fields": {
-                    "description": {"analyzers": ["text_en", "text_en_no_stem_3_10p"]},
-                    "name": {"analyzers": ["text_en", "text_en_no_stem_3_10p"]},
                     "_is_latest": {"analyzers": ["identity"]},
+                    "_record_modified": {"analyzers": ["identity"]},
                     "_id": {"analyzers": ["identity"]},
                     "id": {"analyzers": ["identity"]},
                     "type": {"analyzers": ["identity"]},
-                }
+                },
+                "inBackground": True
             }
-    return {"links": links}
+    return {
+        "links": links,
+        "primarySort": [
+            {
+            "field": "_record_modified",
+                "asc": True,
+            },
+        ]
+    }
 
 
 def setup_semantic_search_view():
 
-    semantic_view_name = "semantic_search_view"
+    semantic_view_name = settings.SEMANTIC_VIEW_NAME
     client = ArangoClient(settings.ARANGODB_HOST_URL)
     db = client.db(
         settings.ARANGODB_DATABASE + "_database",

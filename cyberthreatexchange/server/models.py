@@ -179,7 +179,7 @@ class NewObjectValue(models.Model):
         expression=models.Func(
             models.F("values"),
             models.functions.Cast(models.F('id'), models.TextField()),
-            function="jsonb_values_sort"
+            function="jsonb_sort_value"
         ),
         output_field=models.CharField(max_length=48),
         db_persist=True,
@@ -205,10 +205,10 @@ class NewObjectValue(models.Model):
             models.Index(fields=['type', 'stix_id'], name='ctx_nov_type_stix_idx', condition=models.Q(is_dupe=False)),
             models.Index(fields=['created', 'id', 'type', 'feed_id'], name='ctx_nov_created_type_idx', condition=models.Q(is_dupe=False)),
             models.Index(fields=['modified', 'id', 'type', 'feed_id'], name='ctx_nov_modified_type_idx', condition=models.Q(is_dupe=False)),
-            models.Index(fields=['values_sort', 'type', 'feed_id'], name='ctx_nov_values_concat_idx', condition=models.Q(is_dupe=False)),
+            models.Index(fields=['values_sort', 'type', 'feed_id'], name='ctx_nov_values_sort_type_idx', condition=models.Q(is_dupe=False)),
             models.Index(fields=['created', 'id', 'knowledgebase', 'feed_id'], name='ctx_nov_created_kb_idx', condition=models.Q(is_dupe=False)),
             models.Index(fields=['modified', 'id', 'knowledgebase', 'feed_id'], name='ctx_nov_modified_kb_idx', condition=models.Q(is_dupe=False)),
-            models.Index(fields=['values_sort', 'knowledgebase', 'feed_id'], name='ctx_nov_values_kb_idx', condition=models.Q(is_dupe=False)),
+            models.Index(fields=['values_sort', 'knowledgebase', 'feed_id'], name='ctx_nov_values_sort_kb_idx', condition=models.Q(is_dupe=False)),
         ]
 
     def __str__(self):
@@ -268,14 +268,14 @@ class ObjectVersion(models.Model):
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4)
     feed = models.ForeignKey(Feed, on_delete=models.CASCADE)
-    stix_id = models.CharField(max_length=255, db_index=True)
+    stix_id = models.CharField(max_length=255)
     modified = models.DateTimeField(null=True)
     added_at = models.DateTimeField()
 
     class Meta:
         unique_together = [['feed', 'stix_id', 'modified']]
         indexes = [
-            models.Index(fields=['feed', 'stix_id']),
+            models.Index(fields=['stix_id', 'feed_id'], name='ctx_version_feed_idx'),
             models.Index(fields=['feed', 'modified']),
         ]
 
