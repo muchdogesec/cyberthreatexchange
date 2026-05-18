@@ -235,7 +235,6 @@ def _refresh_stix_dedupe_state(stix_ids: str | list[str] | set[str] | tuple[str,
 
     scoped = NewObjectValue.objects.filter(stix_id__in=stix_ids, is_dupe=False)\
             .only('id', 'stix_id', 'modified', 'is_dupe')
-    print(len(stix_ids), scoped.count())
     return _scoped_refresh_dedupe_state(scoped)
 
 
