@@ -11,6 +11,7 @@ from cyberthreatexchange.server.models import (
     ObjectVersion,
     _refresh_stix_dedupe_state,
 )
+from fast_update.copy import copy_update
 
 
 def external_id(obj):
@@ -285,7 +286,7 @@ def save_object_values(stix_objects, feed_id: str) -> int:
     for stix_obj in stix_objects:
         stix_id = stix_obj['id']
         metadata = extract_object_metadata(stix_obj)
-        value_obj = NewObjectValue(**metadata, added_at=now, updated_at=now, feed_id=feed_id)
+        value_obj = NewObjectValue(**metadata, added_at=now, updated_at=now, feed_id=feed_id, is_dupe=False)
         if stix_id in all_values_data_deduped:
             existing_obj = all_values_data_deduped[stix_id]
             if existing_obj.modified and value_obj.modified and existing_obj.modified < value_obj.modified:
@@ -297,7 +298,7 @@ def save_object_values(stix_objects, feed_id: str) -> int:
             ObjectVersion(
                 feed_id=feed_id,
                 stix_id=value_obj.stix_id,
-                modified=value_obj.modified,
+                modified=value_obj.real_date_value(value_obj.modified),
                 added_at=value_obj.updated_at,
                 # arango_pk=stix_obj['_id'],
             )
@@ -307,7 +308,7 @@ def save_object_values(stix_objects, feed_id: str) -> int:
         update_conflicts=True,
         batch_size=1000,
         update_fields=["modified", "created", "knowledgebase", "values", "updated_at"],
-        unique_fields=["feed", "stix_id"],
+        unique_fields=["feed_id", "stix_id"],
     )
 
     _refresh_stix_dedupe_state([f.stix_id for f in created])

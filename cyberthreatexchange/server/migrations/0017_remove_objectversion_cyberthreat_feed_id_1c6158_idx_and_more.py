@@ -14,15 +14,13 @@ class Migration(migrations.Migration):
             model_name='objectversion',
             name='cyberthreat_feed_id_1c6158_idx',
         ),
-        migrations.RenameIndex(
+        migrations.AddIndex(
             model_name='newobjectvalue',
-            new_name='ctx_nov_values_sort_type_idx',
-            old_name='ctx_nov_values_concat_idx',
+            index=models.Index(condition=models.Q(('is_dupe', False)), fields=['values_sort', 'type', 'feed_id'], name='ctx_nov_values_sort_type_idx'),
         ),
-        migrations.RenameIndex(
+        migrations.AddIndex(
             model_name='newobjectvalue',
-            new_name='ctx_nov_values_sort_kb_idx',
-            old_name='ctx_nov_values_kb_idx',
+            index=models.Index(condition=models.Q(('is_dupe', False)), fields=['values_sort', 'knowledgebase', 'feed_id'], name='ctx_nov_values_sort_kb_idx'),
         ),
         migrations.AlterField(
             model_name='objectversion',

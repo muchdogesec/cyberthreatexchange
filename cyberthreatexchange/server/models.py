@@ -1,4 +1,6 @@
 from collections import defaultdict
+from datetime import datetime, UTC
+import hashlib
 import json
 import logging
 import sys
@@ -10,7 +12,7 @@ from django.utils import timezone
 
 from django.dispatch import receiver
 from dogesec_commons.objects.helpers import ArangoDBHelper
-from django.db.models.signals import post_save, post_delete
+from django.db.models.signals import post_save, post_delete, pre_delete
 from django.contrib.postgres.fields import ArrayField
 from django.db.models.functions import Substr
 import django.contrib.postgres.indexes as postgres_indexes
@@ -21,12 +23,13 @@ from cryptography.fernet import Fernet
 import base64
 from django.core.exceptions import ImproperlyConfigured
 from cyberthreatexchange.server.values import filters as value_filters
+from fast_update.query import FastUpdateManager
 
 from cyberthreatexchange.worker.populate_dbs import setup_arangodb, setup_semantic_search_view
 
 if typing.TYPE_CHECKING:
     from .. import settings
-    
+
 class Category(models.TextChoices):
     OTHER = "other"
     APT_GROUP = "apt_group"
@@ -42,6 +45,7 @@ class Category(models.TextChoices):
     INDICATOR_OF_COMPROMISE = "indicator_of_compromise"
     TTP = "ttp"
 
+NULL_DT = datetime(1970, 1, 1, tzinfo=UTC)
 
 
 class Feed(models.Model):
@@ -116,7 +120,7 @@ def create_collection(feed: Feed):
         )
     )
     setup_arangodb()
-    
+
 def update_identities(feed: Feed):
     identity = feed.identity.dict
     identity["_record_modified"] = timezone.now().isoformat().replace("+00:00", "Z")
@@ -152,7 +156,7 @@ def delete_collections(sender, instance: Feed, **kwargs):
         graph.delete_vertex_collection(instance.collection_name+'_vertex_collection', purge=True)
     except BaseException as e:
         logging.error(f"cannot delete collection `{instance.collection_name}`: {e}")
-    
+
 class NewObjectValue(models.Model):
     """
     New version of ObjectValue with JSONB field for values and optimized indexing.
@@ -163,8 +167,8 @@ class NewObjectValue(models.Model):
     feed = models.ForeignKey(Feed, on_delete=models.CASCADE)
     stix_id = models.CharField(max_length=128, db_index=True)
     type = models.CharField(max_length=64, db_index=True)
-    modified = models.DateTimeField(null=True)
-    created = models.DateTimeField(null=True)
+    modified = models.DateTimeField(default=NULL_DT)
+    created = models.DateTimeField(default=NULL_DT)
     values = models.JSONField()  # Store all values in a JSON field
     is_dupe = models.BooleanField(default=True)
     knowledgebase = models.CharField(max_length=64, null=True, blank=True)
@@ -181,7 +185,7 @@ class NewObjectValue(models.Model):
             models.functions.Cast(models.F('id'), models.TextField()),
             function="jsonb_sort_value"
         ),
-        output_field=models.CharField(max_length=48),
+        output_field=models.CharField(max_length=69),
         db_persist=True,
         null=True,
         blank=True,
@@ -196,12 +200,14 @@ class NewObjectValue(models.Model):
     added_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+
     class Meta:
         unique_together = [['feed', 'stix_id']]
         indexes = [
             models.Index(fields=['is_dupe'], name='ctx_nov_empty_query_idx'),
             models.Index(fields=['stix_id', 'modified']),
-            models.Index(fields=['feed', 'stix_id']),
+            models.Index(fields=['feed', 'stix_id'], condition=models.Q(is_dupe=False), name='ctx_deduplicator_idx'),
+            models.Index(fields=['feed', 'stix_id'], name='ctx_nov_feed_stix_idx'),
             models.Index(fields=['type', 'stix_id'], name='ctx_nov_type_stix_idx', condition=models.Q(is_dupe=False)),
             models.Index(fields=['created', 'id', 'type', 'feed_id'], name='ctx_nov_created_type_idx', condition=models.Q(is_dupe=False)),
             models.Index(fields=['modified', 'id', 'type', 'feed_id'], name='ctx_nov_modified_type_idx', condition=models.Q(is_dupe=False)),
@@ -214,6 +220,11 @@ class NewObjectValue(models.Model):
     def __str__(self):
         return f"ObjectValue(stix_id={self.stix_id}, type={self.type}, modified={self.modified}, feed={self.feed.id}, values={len(self.values)})"
 
+    @staticmethod
+    def real_date_value(d: datetime):
+        if d == NULL_DT:
+            return None
+        return d
 
 def _refresh_stix_dedupe_state(stix_ids: str | list[str] | set[str] | tuple[str, ...]) -> int:
     'returns number of updated rows'
@@ -223,18 +234,19 @@ def _refresh_stix_dedupe_state(stix_ids: str | list[str] | set[str] | tuple[str,
     if not stix_ids:
         return 0
 
-    scoped = NewObjectValue.objects.filter(stix_id__in=stix_ids)
-    if not scoped.exists():
-        return 0
-    
-    from django.db.models import Window
-    from django.db.models.functions import RowNumber
-    from datetime import datetime, UTC
+    scoped = NewObjectValue.objects.filter(stix_id__in=stix_ids, is_dupe=False)\
+            .only('id', 'stix_id', 'modified', 'is_dupe')
+    print(len(stix_ids), scoped.count())
+    return _scoped_refresh_dedupe_state(scoped)
+
+
+def _scoped_refresh_dedupe_state(scoped: list[NewObjectValue]) -> int:
     # Keep one canonical row per STIX ID and mark all others as duplicates.
-    objs = []
+    objs = defaultdict(list)
+    objs2 = []
     seen = set()
     
-    for obj in scoped.order_by('-stix_id', '-modified').only('id', 'stix_id', 'modified', 'is_dupe'):
+    for obj in sorted(scoped, key=lambda obj: (obj.stix_id, obj.modified), reverse=True):
         orig_is_dupe = obj.is_dupe
         if obj.stix_id in seen:
             obj.is_dupe = True
@@ -242,22 +254,33 @@ def _refresh_stix_dedupe_state(stix_ids: str | list[str] | set[str] | tuple[str,
             obj.is_dupe = False
         seen.add(obj.stix_id)
         if orig_is_dupe != obj.is_dupe:
-            objs.append(obj)
-    return NewObjectValue.objects.bulk_update(objs, ['is_dupe'], batch_size=500)
+            objs[obj.is_dupe].append(obj.id)
+            objs2.append(obj)
+    count = 0
+    batch_size = 500
+    for k, v in objs.items():
+        for chunk_start in range(0, len(v), batch_size):
+            count += NewObjectValue.objects.filter(id__in=v[chunk_start:chunk_start+batch_size]).update(is_dupe=k)
+    return count
 
 def refresh_dupes_on_feed_batched(feed_id: str, chunk_size: int = 10_000):
-    stix_ids = list(set(NewObjectValue.objects.filter(feed_id=feed_id).values_list('stix_id', flat=True)))
-    count = len(stix_ids)
-    updated = 0
-    for i in range(0, count, chunk_size):
-        print('.', end='', flush=True)
-        batch_ids = stix_ids[i:i+chunk_size]
-        updated += _refresh_stix_dedupe_state(batch_ids)
-        print('+', end='', flush=True)
-    return count, updated
+    from django.db.models import OuterRef, Exists, Subquery
+
+    feed_ids = list(Feed.objects.exclude(id=feed_id).values_list('id', flat=True))
+
+    scope = NewObjectValue.objects.filter(
+        feed_id__in=feed_ids,
+        stix_id__in=Subquery(
+            NewObjectValue.objects.filter(feed_id=feed_id, is_dupe=False).values(
+                "stix_id"
+            )
+        ),
+    ).only("stix_id", "modified", "id", "is_dupe")
+    updated = _scoped_refresh_dedupe_state(scope)
+    return updated
 
 
-@receiver(post_delete, sender=Feed)
+@receiver(pre_delete, sender=Feed)
 def rebalance_newobjectvalue_dupes(sender, instance: Feed, **kwargs):
     refresh_dupes_on_feed_batched(instance.id)
 
