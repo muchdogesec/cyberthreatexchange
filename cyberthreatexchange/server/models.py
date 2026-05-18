@@ -23,7 +23,6 @@ from cryptography.fernet import Fernet
 import base64
 from django.core.exceptions import ImproperlyConfigured
 from cyberthreatexchange.server.values import filters as value_filters
-from fast_update.query import FastUpdateManager
 
 from cyberthreatexchange.worker.populate_dbs import setup_arangodb, setup_semantic_search_view
 

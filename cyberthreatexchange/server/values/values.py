@@ -11,7 +11,6 @@ from cyberthreatexchange.server.models import (
     ObjectVersion,
     _refresh_stix_dedupe_state,
 )
-from fast_update.copy import copy_update
 
 
 def external_id(obj):

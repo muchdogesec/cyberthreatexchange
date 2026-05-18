@@ -287,7 +287,6 @@ class TestArangoDBHelperWithRealData:
         feed = arango_helper.feed
 
         helper = ArangoDBHelper(feed.vertex_collection, request)
-        print(params)
         response = helper.semantic_search(collections=[feed.collection_name])
         objects = response.data.get("objects", [])
         print({obj["id"] for obj in objects})
