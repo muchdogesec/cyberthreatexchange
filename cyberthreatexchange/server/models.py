@@ -110,6 +110,7 @@ def create_collection(feed: Feed):
         file="",
         host_url=settings.ARANGODB_HOST_URL,
         create_collection=True,
+        versioning_mode='versionless',
     )
     s2a.run(
         data=dict(

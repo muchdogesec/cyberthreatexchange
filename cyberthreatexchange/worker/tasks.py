@@ -93,6 +93,7 @@ def make_uploads(job_id, objects, warnings=None, arango_extra=None):
         password=settings.ARANGODB_PASSWORD,
         create_db=False,
         create_collection=False,
+        versioning_mode='versionless',
     )
     bundle_id = job.payload.get('id', 'bundle--'+str(uuid.uuid4()))
     objects_to_process = []
