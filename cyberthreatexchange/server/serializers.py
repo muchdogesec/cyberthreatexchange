@@ -16,6 +16,9 @@ class StixObjectsPlaceholderSerializer(serializers.Serializer):
     type = serializers.CharField()
     id = serializers.CharField()
 
+class PlaceholderStixObjectSerializer(StixObjectsPlaceholderSerializer):
+    pass
+
 
 class WarningSerializer(serializers.Serializer):
     type = serializers.CharField()

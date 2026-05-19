@@ -263,14 +263,6 @@ class TestArangoDBHelperWithRealData:
                 ["indicator--8e2e2d2b-17d4-4cbf-938f-98ee46b3cd3f"],
             ),
             (
-                {"text": "APT29"},
-                [
-                    "malware--d1c612bc-146f-4b65-b7b0-9a54a14150a4",
-                    "campaign--8e2e2d2b-17d4-4cbf-938f-98ee46b3cd3f",
-                    "identity--c78cb6e5-0c4b-4611-8297-d1b8b55e40b5",
-                ],
-            ),
-            (
                 {"name": "Cobalt Strike"},
                 [
                     "malware--d1c612bc-146f-4b65-b7b0-9a54a14150a4",

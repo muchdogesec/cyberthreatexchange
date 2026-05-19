@@ -18,7 +18,10 @@ from cyberthreatexchange.server.values.values import (
 
 
 def _to_dict(stix_object):
-    return json.loads(stix_object.serialize())
+    dct = json.loads(stix_object.serialize())
+    dct['_id'] = 'collection/'+dct['id']
+    return dct
+
 
 
 class TestValueHelpers:
@@ -161,7 +164,9 @@ class TestSaveObjectValues:
 
         assert created_count == 2
         assert models.NewObjectValue.objects.filter(feed=feed).count() == 2
-        assert models.ObjectVersion.objects.filter(feed=feed).count() == 2
+        assert {x.arango_pk for x in models.NewObjectValue.objects.filter(feed=feed)} == {
+            "collection/location--44444444-4444-4444-8444-444444444444", "collection/indicator--33333333-3333-4333-8333-333333333333"
+        }
 
     def test_save_object_values_keeps_latest_modified_for_same_stix_id(self, feed):
         created_at = datetime(2024, 1, 1, tzinfo=timezone.utc)
@@ -198,9 +203,7 @@ class TestSaveObjectValues:
         assert created_count == 1
         stored = models.NewObjectValue.objects.get(feed=feed, stix_id=stix_id)
         assert stored.values["name"] == "New indicator name"
-
-        versions = models.ObjectVersion.objects.filter(feed=feed, stix_id=stix_id)
-        assert versions.count() == 2
+        assert stored.arango_pk == 'collection/'+stix_id
 
     def test_save_object_values_persists_knowledgebase_and_kb_id(self, feed):
         attack_pattern = _to_dict(

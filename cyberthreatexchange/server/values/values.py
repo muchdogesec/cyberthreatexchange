@@ -1,14 +1,8 @@
-from stix2 import IPv4Address
-from stix2extensions import BankAccount
 from datetime import UTC, datetime
-from typing import List, Dict, Tuple, Callable
-import logging
+from typing import Callable
 
-from dogesec_commons.objects.helpers import TLP_VISIBLE_TO_ALL
-from stix2arango.stix2arango.stix2arango import post_upload_hook
 from cyberthreatexchange.server.models import (
     NewObjectValue,
-    ObjectVersion,
     _refresh_stix_dedupe_state,
 )
 
@@ -153,6 +147,9 @@ sco_value_map = {
 s2e_sdo_map = {
     "weakness": dict(values=["name"]),
     "exploit": dict(values=["name", "proof_of_concept"]),
+    "procedure": dict(values=["name"]),
+    "attack-action": dict(values=["name"]),
+    "attack-flow": dict(values=["name"]),
 }
 # mitre ATT&CK TTP types can be identified by their x_mitre_domains property or specific external references
 MITRE_VALUE_MAP = {
@@ -173,7 +170,6 @@ sdo_value_map = {
     "course-of-action": dict(values=["name"]),
     "grouping": dict(values=["name", "context"]),
     "identity": dict(values=["name"]),
-    "marking-definition": dict(values=get_marking_definitions_values),
     "incident": dict(values=["name"]),
     "indicator": dict(values=["name", "pattern"]),
     "infrastructure": dict(values=["name"]),
@@ -196,10 +192,19 @@ sro_value_map = {
     "relationship": dict(values=["relationship_type"]),
     "sighting": dict(values=["summary"]),
 }
+smo_value_map = {
+    # Metadata Objects (SMO}
+    "marking-definition": dict(values=get_marking_definitions_values),
+    "extension-definition": dict(values=["name", "description"]),
+    "language-content": dict(values=["contents"]),
+
+}
+
 type_value_map = {
     **sco_value_map,
     **sdo_value_map,
     **sro_value_map,
+    **smo_value_map,
 }
 
 ALL_TYPES_NO_SRO = [t for t in type_value_map if t not in sro_value_map]
@@ -269,12 +274,18 @@ def save_object_values(stix_objects, feed_id: str) -> int:
     all_versions_data = []
     now = datetime.now(UTC)
 
-
     # Extract values from all objects
     for stix_obj in stix_objects:
         stix_id = stix_obj['id']
         metadata = extract_object_metadata(stix_obj)
-        value_obj = NewObjectValue(**metadata, added_at=now, updated_at=now, feed_id=feed_id)
+        value_obj = NewObjectValue(
+            **metadata,
+            added_at=now,
+            updated_at=now,
+            feed_id=feed_id,
+            is_dupe=False,
+            arango_pk=stix_obj["_id"],
+        )
         if stix_id in all_values_data_deduped:
             existing_obj = all_values_data_deduped[stix_id]
             if existing_obj.modified and value_obj.modified and existing_obj.modified < value_obj.modified:
@@ -282,27 +293,13 @@ def save_object_values(stix_objects, feed_id: str) -> int:
         if stix_id not in all_values_data_deduped:
             all_values_data_deduped[value_obj.stix_id] = value_obj
 
-        all_versions_data.append(
-            ObjectVersion(
-                feed_id=feed_id,
-                stix_id=value_obj.stix_id,
-                modified=value_obj.modified,
-                added_at=value_obj.updated_at,
-            )
-        )
     created = NewObjectValue.objects.bulk_create(
         all_values_data_deduped.values(),
         update_conflicts=True,
         batch_size=1000,
-        update_fields=["modified", "created", "knowledgebase", "values", "updated_at"],
-        unique_fields=["feed", "stix_id"],
+        update_fields=["modified", "created", "knowledgebase", "values", "updated_at", 'arango_pk'],
+        unique_fields=["feed_id", "stix_id"],
     )
 
     _refresh_stix_dedupe_state([f.stix_id for f in created])
-
-    ObjectVersion.objects.bulk_create(
-        all_versions_data,
-        ignore_conflicts=True,
-        batch_size=1000,
-    )
     return len(created)

@@ -4,18 +4,6 @@ Views for the Cyber Threat Exchange server.
 
 import textwrap
 
-
-SEMANTIC_SEARCH_SORT_FIELDS = [
-    "modified_descending",
-    "modified_ascending",
-    "created_ascending",
-    "created_descending",
-    "name_ascending",
-    "name_descending",
-    "type_ascending",
-    "type_descending",
-]
-
 from django_filters.rest_framework import (
     DjangoFilterBackend,
     DjangoFilterBackend,

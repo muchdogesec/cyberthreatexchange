@@ -54,18 +54,10 @@ class Migration(migrations.Migration):
         ),
         migrations.AddIndex(
             model_name='newobjectvalue',
-            index=models.Index(condition=models.Q(('is_dupe', False)), fields=['values_sort', 'type', 'feed_id'], name='ctx_nov_values_concat_idx'),
-        ),
-        migrations.AddIndex(
-            model_name='newobjectvalue',
             index=models.Index(condition=models.Q(('is_dupe', False)), fields=['created', 'knowledgebase', 'feed_id'], name='ctx_nov_created_kb_idx'),
         ),
         migrations.AddIndex(
             model_name='newobjectvalue',
             index=models.Index(condition=models.Q(('is_dupe', False)), fields=['modified', 'knowledgebase', 'feed_id'], name='ctx_nov_modified_kb_idx'),
-        ),
-        migrations.AddIndex(
-            model_name='newobjectvalue',
-            index=models.Index(condition=models.Q(('is_dupe', False)), fields=['values_sort', 'knowledgebase', 'feed_id'], name='ctx_nov_values_kb_idx'),
         ),
     ]
