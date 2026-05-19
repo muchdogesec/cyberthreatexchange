@@ -1,14 +1,8 @@
-from stix2 import IPv4Address
-from stix2extensions import BankAccount
 from datetime import UTC, datetime
-from typing import List, Dict, Tuple, Callable
-import logging
+from typing import Callable
 
-from dogesec_commons.objects.helpers import TLP_VISIBLE_TO_ALL
-from stix2arango.stix2arango.stix2arango import post_upload_hook
 from cyberthreatexchange.server.models import (
     NewObjectValue,
-    ObjectVersion,
     _refresh_stix_dedupe_state,
 )
 
@@ -280,12 +274,18 @@ def save_object_values(stix_objects, feed_id: str) -> int:
     all_versions_data = []
     now = datetime.now(UTC)
 
-
     # Extract values from all objects
     for stix_obj in stix_objects:
         stix_id = stix_obj['id']
         metadata = extract_object_metadata(stix_obj)
-        value_obj = NewObjectValue(**metadata, added_at=now, updated_at=now, feed_id=feed_id, is_dupe=False)
+        value_obj = NewObjectValue(
+            **metadata,
+            added_at=now,
+            updated_at=now,
+            feed_id=feed_id,
+            is_dupe=False,
+            arango_pk=stix_obj["_id"],
+        )
         if stix_id in all_values_data_deduped:
             existing_obj = all_values_data_deduped[stix_id]
             if existing_obj.modified and value_obj.modified and existing_obj.modified < value_obj.modified:
@@ -293,28 +293,13 @@ def save_object_values(stix_objects, feed_id: str) -> int:
         if stix_id not in all_values_data_deduped:
             all_values_data_deduped[value_obj.stix_id] = value_obj
 
-        all_versions_data.append(
-            ObjectVersion(
-                feed_id=feed_id,
-                stix_id=value_obj.stix_id,
-                modified=value_obj.real_date_value(value_obj.modified),
-                added_at=value_obj.updated_at,
-                # arango_pk=stix_obj['_id'],
-            )
-        )
     created = NewObjectValue.objects.bulk_create(
         all_values_data_deduped.values(),
         update_conflicts=True,
         batch_size=1000,
-        update_fields=["modified", "created", "knowledgebase", "values", "updated_at"],
+        update_fields=["modified", "created", "knowledgebase", "values", "updated_at", 'arango_pk'],
         unique_fields=["feed_id", "stix_id"],
     )
 
     _refresh_stix_dedupe_state([f.stix_id for f in created])
-
-    ObjectVersion.objects.bulk_create(
-        all_versions_data,
-        ignore_conflicts=True,
-        batch_size=1000,
-    )
     return len(created)

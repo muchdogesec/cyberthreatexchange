@@ -542,7 +542,7 @@ class SearchView(mixins.ListModelMixin, viewsets.GenericViewSet):
                 Q(feed_id__in=value)
                 | Q(
                     Exists(
-                        models.ObjectVersion.objects.filter(
+                        models.NewObjectValue.objects.filter(
                             feed_id__in=value,
                             stix_id=OuterRef("stix_id"),
                         )

@@ -172,6 +172,7 @@ class NewObjectValue(models.Model):
     values = models.JSONField()  # Store all values in a JSON field
     is_dupe = models.BooleanField(default=True)
     knowledgebase = models.CharField(max_length=64, null=True, blank=True)
+    arango_pk = models.CharField(max_length=255, null=True)
     values_concat = models.GeneratedField(
         expression=models.Func(models.F("values"), function="jsonb_values_concat"),
         output_field=models.TextField(),
@@ -282,27 +283,6 @@ def refresh_dupes_on_feed_batched(feed_id: str, chunk_size: int = 10_000):
 @receiver(pre_delete, sender=Feed)
 def rebalance_newobjectvalue_dupes(sender, instance: Feed, **kwargs):
     refresh_dupes_on_feed_batched(instance.id)
-
-class ObjectVersion(models.Model):
-    """
-    Stores metadata about each version of a STIX object for history and version tracking.
-    Unique constraint: (feed, stix_id, modified)
-    """
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4)
-    feed = models.ForeignKey(Feed, on_delete=models.CASCADE)
-    stix_id = models.CharField(max_length=255)
-    modified = models.DateTimeField(null=True)
-    added_at = models.DateTimeField()
-
-    class Meta:
-        unique_together = [['feed', 'stix_id', 'modified']]
-        indexes = [
-            models.Index(fields=['stix_id', 'feed_id'], name='ctx_version_feed_idx'),
-            models.Index(fields=['feed', 'modified']),
-        ]
-
-    def __str__(self):
-        return f"Object(id={self.stix_id}, modified={self.modified}, feed={self.feed.id})"
 
 class JobTypes(models.TextChoices):
     BUNDLE_UPLOAD  = "bundle-upload"

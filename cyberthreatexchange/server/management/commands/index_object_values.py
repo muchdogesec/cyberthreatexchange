@@ -16,7 +16,7 @@ from django.core.management.base import BaseCommand
 from django.conf import settings
 from arango import ArangoClient
 
-from cyberthreatexchange.server.models import Feed, NewObjectValue, ObjectVersion, refresh_dupes_on_feed_batched
+from cyberthreatexchange.server.models import Feed, NewObjectValue, refresh_dupes_on_feed_batched
 from cyberthreatexchange.server.values.values import save_object_values
 
 
@@ -108,7 +108,6 @@ class Command(BaseCommand):
 
                 if not (dry_run or refresh_dupes):
                     NewObjectValue.objects.filter(feed=feed).delete()
-                    ObjectVersion.objects.filter(feed=feed).delete()
 
                 if refresh_dupes:
                     self.stdout.write(
