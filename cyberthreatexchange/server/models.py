@@ -23,8 +23,8 @@ from cryptography.fernet import Fernet
 import base64
 from django.core.exceptions import ImproperlyConfigured
 from cyberthreatexchange.server.values import filters as value_filters
+from cyberthreatexchange.worker.populate_dbs import setup_arangodb
 
-from cyberthreatexchange.worker.populate_dbs import setup_arangodb, setup_semantic_search_view
 
 if typing.TYPE_CHECKING:
     from .. import settings
@@ -119,7 +119,14 @@ def create_collection(feed: Feed):
             objects=[feed.identity.dict],
         )
     )
-    setup_arangodb()
+    link_collections_task()
+
+def link_collections_task():
+    from cyberthreatexchange.worker.tasks import link_collections
+    if getattr(settings, 'LINK_VIEW_SYNC', False):
+        setup_arangodb(sync=True)
+    else:
+        link_collections.delay()
 
 def update_identities(feed: Feed):
     identity = feed.identity.dict
