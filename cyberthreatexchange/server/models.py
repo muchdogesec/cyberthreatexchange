@@ -23,6 +23,7 @@ from cryptography.fernet import Fernet
 import base64
 from django.core.exceptions import ImproperlyConfigured
 from cyberthreatexchange.server.values import filters as value_filters
+from cyberthreatexchange.worker.populate_dbs import setup_arangodb
 
 
 if typing.TYPE_CHECKING:
@@ -103,7 +104,6 @@ def auto_update_identities(sender, instance: Identity, created, **kwargs):
 
 
 def create_collection(feed: Feed):
-    from cyberthreatexchange.worker.tasks import link_collections
     s2a = Stix2Arango(
         database=settings.ARANGODB_DATABASE,
         collection=feed.collection_name,
@@ -119,7 +119,14 @@ def create_collection(feed: Feed):
             objects=[feed.identity.dict],
         )
     )
-    link_collections.delay()
+    link_collections_task()
+
+def link_collections_task():
+    from cyberthreatexchange.worker.tasks import link_collections
+    if getattr(settings, 'LINK_VIEW_SYNC', False):
+        setup_arangodb(sync=True)
+    else:
+        link_collections.delay()
 
 def update_identities(feed: Feed):
     identity = feed.identity.dict

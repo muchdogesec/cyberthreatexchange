@@ -4,6 +4,7 @@ Pytest fixtures for testing.
 
 import pytest
 from cyberthreatexchange.server import models
+from cyberthreatexchange.worker.populate_dbs import setup_arangodb
 from tests.src.data import non_relationship_objects, all_objects
 import time
 import pytest
@@ -69,10 +70,11 @@ def api_schema():
     yield schemathesis.openapi.from_asgi("/api/schema/?format=json", application)
 
 @pytest.fixture
-def celery_always_eager():
+def celery_always_eager(settings):
+    settings.LINK_VIEW_SYNC = False
     from cyberthreatexchange.worker.celery import app
-
     app.conf.task_always_eager = True
     app.conf.broker_url = None
     yield
     app.conf.task_always_eager = False
+    
