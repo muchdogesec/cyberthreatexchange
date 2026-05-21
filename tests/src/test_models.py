@@ -1,4 +1,7 @@
+from unittest.mock import MagicMock, patch
+
 from cyberthreatexchange.server import models
+from cyberthreatexchange.worker import populate_dbs
 
 
 def test_create_feed_uses_name_based_uuid(identity):
@@ -133,8 +136,18 @@ def test_ov__values(feeds_with_object_values, monkeypatch):
 
     assert models.NewObjectValue.objects.filter(is_dupe=False).count() == len(set(feeds_with_object_values["stix_ids"]))
     assert models.NewObjectValue.objects.filter(is_dupe=True, feed_id=feed_to_remove.id).count() == 0
-    monkeypatch.setenv('DEBUG_SQL', '2')
     feed_to_remove.delete()
     assert models.NewObjectValue.objects.count() == 10
     assert models.NewObjectValue.objects.filter(is_dupe=False).count() == 5
     assert models.NewObjectValue.objects.filter(is_dupe=True).count() == 5
+
+@pytest.mark.django_db
+def test_create_feed__runs_setup_db(identity, monkeypatch, celery_always_eager):
+    with patch('cyberthreatexchange.worker.populate_dbs.setup_semantic_search_view', side_effect=populate_dbs.setup_semantic_search_view) as mock_setup_db:
+        feed = models.Feed.objects.create(
+            name="Test Feed",
+            description="A test feed for unit tests",
+            identity=identity,
+            tags=["test", "sample"],
+        )
+    mock_setup_db.assert_called_once_with(sync=False)

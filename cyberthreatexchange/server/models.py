@@ -24,7 +24,6 @@ import base64
 from django.core.exceptions import ImproperlyConfigured
 from cyberthreatexchange.server.values import filters as value_filters
 
-from cyberthreatexchange.worker.populate_dbs import setup_arangodb, setup_semantic_search_view
 
 if typing.TYPE_CHECKING:
     from .. import settings
@@ -104,6 +103,7 @@ def auto_update_identities(sender, instance: Identity, created, **kwargs):
 
 
 def create_collection(feed: Feed):
+    from cyberthreatexchange.worker.tasks import link_collections
     s2a = Stix2Arango(
         database=settings.ARANGODB_DATABASE,
         collection=feed.collection_name,
@@ -119,7 +119,7 @@ def create_collection(feed: Feed):
             objects=[feed.identity.dict],
         )
     )
-    setup_arangodb()
+    link_collections.delay()
 
 def update_identities(feed: Feed):
     identity = feed.identity.dict

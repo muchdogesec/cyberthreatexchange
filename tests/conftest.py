@@ -68,3 +68,11 @@ def api_schema():
 
     yield schemathesis.openapi.from_asgi("/api/schema/?format=json", application)
 
+@pytest.fixture
+def celery_always_eager():
+    from cyberthreatexchange.worker.celery import app
+
+    app.conf.task_always_eager = True
+    app.conf.broker_url = None
+    yield
+    app.conf.task_always_eager = False

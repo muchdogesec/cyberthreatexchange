@@ -60,7 +60,7 @@ def get_semantic_search_properties(db: StandardDatabase):
     }
 
 
-def setup_semantic_search_view():
+def setup_semantic_search_view(sync=True):
 
     semantic_view_name = settings.SEMANTIC_VIEW_NAME
     client = ArangoClient(settings.ARANGODB_HOST_URL)
@@ -70,6 +70,8 @@ def setup_semantic_search_view():
         settings.ARANGODB_PASSWORD,
         verify=True,
     )
+    if not sync:
+        db = db.begin_async_execution()
     try:
         view = db.view(semantic_view_name)
         db.update_view(semantic_view_name, get_semantic_search_properties(db))
@@ -81,9 +83,9 @@ def setup_semantic_search_view():
         )
 
 
-def setup_arangodb():
+def setup_arangodb(sync=True):
     db_view_creator.startup_func()
-    setup_semantic_search_view()
+    setup_semantic_search_view(sync=sync)
 
 
 if __name__ == "__main__":  # pragma: no cover
