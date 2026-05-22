@@ -540,14 +540,14 @@ class SearchView(mixins.ListModelMixin, viewsets.GenericViewSet):
                 return queryset
             queryset = queryset.filter(
                 Q(feed_id__in=value)
-                | Q(
-                    Exists(
-                        models.NewObjectValue.objects.filter(
-                            feed_id__in=value,
-                            stix_id=OuterRef("stix_id"),
-                        )
-                    )
-                ),
+                # | Q(
+                #     Exists(
+                #         models.NewObjectValue.objects.filter(
+                #             feed_id__in=value,
+                #             stix_id=OuterRef("stix_id"),
+                #         )
+                #     )
+                # ),
             )
             return queryset
 
