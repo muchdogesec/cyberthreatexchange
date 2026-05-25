@@ -1,8 +1,9 @@
+import collections
 import typing
 import arango.exceptions
 from django.conf import settings
 from arango.client import ArangoClient
-from arango.database import StandardDatabase
+from arango.database import StandardDatabase, AsyncDatabase
 from dogesec_commons.objects import db_view_creator
 
 if typing.TYPE_CHECKING:
@@ -20,6 +21,24 @@ def create_analyzer(db, *args, **kwargs):
             raise
 
 
+def get_collection_names(db: StandardDatabase):
+    collections = await_result_with_timeout(db.collections())
+    return [collection["name"] for collection in collections]
+
+def await_result_with_timeout(async_result, timeout=5):
+    import time
+    start_time = time.time()
+    if not isinstance(async_result, arango.job.AsyncJob):
+        return async_result
+    while True:
+        try:
+            return async_result.result()
+        except arango.exceptions.AsyncJobResultError as e:
+            if time.time() - start_time > timeout:
+                raise TimeoutError(f"Async job did not complete within {timeout} seconds") from e
+            time.sleep(0.2)  # small sleep to prevent tight loop
+
+
 def get_semantic_search_properties(db: StandardDatabase):
     create_analyzer(
         db,
@@ -35,11 +54,11 @@ def get_semantic_search_properties(db: StandardDatabase):
         features=["frequency", "position", "offset", "norm"],
     )
     links = {}
-    for c in db.collections():
-        if c["name"].endswith("_vertex_collection") or c["name"].endswith(
+    for collection_name in get_collection_names(db):
+        if collection_name.endswith("_vertex_collection") or collection_name.endswith(
             "_edge_collection"
         ):
-            links[c["name"]] = {
+            links[collection_name] = {
                 "fields": {
                     "_is_latest": {"analyzers": ["identity"]},
                     "_record_modified": {"analyzers": ["identity"]},
@@ -73,10 +92,14 @@ def setup_semantic_search_view(sync=True):
     if not sync:
         db = db.begin_async_execution()
     try:
-        view = db.view(semantic_view_name)
-        db.update_view(semantic_view_name, get_semantic_search_properties(db))
-    except:
-        db.create_view(
+        if sync:
+            view = db.view(semantic_view_name)
+        else:
+            view = await_result_with_timeout(db.view(semantic_view_name))
+        return db.update_view(semantic_view_name, get_semantic_search_properties(db))
+    except Exception as e:
+        print(f"Update failed: {e}, creating semantic search view '{semantic_view_name}'")
+        return db.create_view(
             name=semantic_view_name,
             view_type="arangosearch",
             properties=get_semantic_search_properties(db),

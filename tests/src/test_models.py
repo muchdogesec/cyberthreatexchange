@@ -1,7 +1,23 @@
-from unittest.mock import MagicMock, patch
+import time
+import typing
+from unittest.mock import patch
+
+from arango import AsyncJobResultError
 
 from cyberthreatexchange.server import models
 from cyberthreatexchange.worker import populate_dbs
+from cyberthreatexchange.worker.populate_dbs import setup_semantic_search_view
+
+from django.conf import settings
+from arango.client import ArangoClient
+import pytest
+import uuid
+import random
+from datetime import UTC, timedelta, datetime
+from django.utils import timezone
+
+if typing.TYPE_CHECKING:
+    from cyberthreatexchange import settings
 
 
 def test_create_feed_uses_name_based_uuid(identity):
@@ -36,12 +52,6 @@ def test_create_feed_uses_name_based_uuid(identity):
     # "My basic feed+identity--9779a2db-f98c-5f4b-8d08-8ee04e02dbb5"
     assert str(feed3.id) == "2902eb6f-aa38-5e50-b56d-c85ebfb1e377"
 
-
-import pytest
-import uuid
-import random
-from datetime import UTC, timedelta, datetime
-from django.utils import timezone
 
 
 
@@ -143,11 +153,38 @@ def test_ov__values(feeds_with_object_values, monkeypatch):
 
 @pytest.mark.django_db
 def test_create_feed__runs_setup_db(identity, monkeypatch, celery_always_eager):
-    with patch('cyberthreatexchange.worker.populate_dbs.setup_semantic_search_view', side_effect=populate_dbs.setup_semantic_search_view) as mock_setup_db:
+    used_async = {}
+    def setup_view__await_result(*args, **kwargs):
+        result = setup_semantic_search_view(*args, **kwargs)
+        if hasattr(result, 'result'):
+            used_async['called'] = True
+            for i in range(50):  # wait up to 5 seconds for the view setup to complete
+                try:
+                    result = result.result()
+                    break
+                except AsyncJobResultError as e:
+                    time.sleep(0.1)  # small sleep to prevent tight loop
+                    continue
+        return result
+    
+    populate_dbs.setup_semantic_search_view(sync=True) # Ensure view exists before test (since we're testing if view is updated correctly after a new feed is created, we want to make sure the view is created before the feed creation triggers an update)
+    with patch('cyberthreatexchange.worker.populate_dbs.setup_semantic_search_view', side_effect=setup_view__await_result) as mock_setup_db:
         feed = models.Feed.objects.create(
             name="Test Feed",
             description="A test feed for unit tests",
             identity=identity,
             tags=["test", "sample"],
+            id=uuid.uuid4(),
         )
     mock_setup_db.assert_called_once_with(sync=False)
+    assert used_async, "Expected setup_semantic_search_view to be called with sync=False, but it seems it was not awaited properly"
+    client = ArangoClient(settings.ARANGODB_HOST_URL)
+    db = client.db(
+        settings.ARANGODB_DATABASE + "_database",
+        settings.ARANGODB_USERNAME,
+        settings.ARANGODB_PASSWORD,
+        verify=True,
+    )
+    view_properties = db.view(settings.SEMANTIC_VIEW_NAME)
+    assert feed.vertex_collection in view_properties['links']
+    assert feed.edge_collection in view_properties['links']
