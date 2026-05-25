@@ -21,11 +21,22 @@ def create_analyzer(db, *args, **kwargs):
             raise
 
 
-def get_collection_names(db):
-    collections = db.collections()
-    if isinstance(db, AsyncDatabase):
-        collections = collections.result()
+def get_collection_names(db: StandardDatabase):
+    collections = await_result_with_timeout(db.collections())
     return [collection["name"] for collection in collections]
+
+def await_result_with_timeout(async_result, timeout=5):
+    import time
+    start_time = time.time()
+    if not isinstance(async_result, arango.job.AsyncJob):
+        return async_result
+    while True:
+        try:
+            return async_result.result()
+        except arango.exceptions.AsyncJobResultError as e:
+            if time.time() - start_time > timeout:
+                raise TimeoutError(f"Async job did not complete within {timeout} seconds") from e
+            time.sleep(0.2)  # small sleep to prevent tight loop
 
 
 def get_semantic_search_properties(db: StandardDatabase):
@@ -84,7 +95,7 @@ def setup_semantic_search_view(sync=True):
         if sync:
             view = db.view(semantic_view_name)
         else:
-            view = db.view(semantic_view_name).result()
+            view = await_result_with_timeout(db.view(semantic_view_name))
         return db.update_view(semantic_view_name, get_semantic_search_properties(db))
     except Exception as e:
         print(f"Update failed: {e}, creating semantic search view '{semantic_view_name}'")
