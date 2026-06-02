@@ -345,34 +345,50 @@ class FeedView(viewsets.ModelViewSet):
         summary="Get bundle of related objects from a feed",
         description=textwrap.dedent(
             """
-            Get all objects directly related to the specified object within the feed.
+            Get a relationship bundle around the requested object.
+
+            The response returns object IDs plus an opaque cursor token that can be sent back to continue scanning the bundle on the next request.
             """
         ),
         parameters=[
             OpenApiParameter(
-                "show_embedded_refs",
-                description=textwrap.dedent(
-                    """
-                    If set to `false` (default), the response will only include the directly requested object, and will not include any embedded SROs that link it to other objects. If set to `true`, the response will include all directly related objects, and will represent the relationships between them using STIX embedded relationships.
-                    """
-                ),
-                type=OpenApiTypes.BOOL,
-            ),
-            OpenApiParameter(
                 "types",
-                description="Only show objects of selected types",
+                description="Only include direct relationships whose related objects are in this STIX type list.",
                 enum=ALL_SEARCH_TYPES,
                 explode=False,
                 style="form",
                 many=True,
             ),
             OpenApiParameter(
-                "show_embedded_sros",
-                type=OpenApiTypes.BOOL,
-                description="set to `true` to include the embedded relationships linking the objects. Setting to `false` (default) will still return the target object, but wont return the embedded SRO linking them. Set to `true` if your downstream software CANNOT interpret STIX embedded relationships",
+                "secondary_types",
+                description="Only include secondary relationships whose related objects are in this STIX type list. Defaults to `types` when omitted.",
+                enum=ALL_SEARCH_TYPES,
+                explode=False,
+                style="form",
+                many=True,
             ),
+            OpenApiParameter(
+                "secondary_relations",
+                description="Set to `true` to include related objects reachable via secondary relationships.",
+                type=OpenApiTypes.BOOL,
+            ),
+            OpenApiParameter(
+                'limit',
+                description='Maximum number of returned object IDs to include in a page. The server clamps this to a hard max of 100.',
+                type=OpenApiTypes.INT,
+            ),
+            OpenApiParameter(
+                'cursor',
+                description="Opaque base64 cursor returned by the previous page.",
+                type=OpenApiTypes.STR,
+            ),
+            OpenApiParameter(
+                'show_embedded_refs',
+                description="If set to false (default), the response will only include the directly requested object, and will not include any embedded SROs that link it to other objects. If set to true, the response will include all directly related objects, and will represent the relationships between them using STIX embedded relationships..",
+                type=OpenApiTypes.BOOL,
+            )
         ],
-        responses=serializers.StixObjectsPlaceholderSerializer(many=True),
+        responses=serializers.BundleObjects(),
         filters=False,
     ),
 )
@@ -436,7 +452,7 @@ class FeedObjectsView(viewsets.GenericViewSet):
     def bundle(self, request, object_id, feed_id=None):
         feed = get_object_or_404(models.Feed, id=feed_id)
         helper = ArangoDBHelper(feed.vertex_collection, request)
-        return helper.get_object_by_external_id(object_id, bundle=True)
+        return helper.get_bundle2(object_id)
 
 
 @extend_schema_view(

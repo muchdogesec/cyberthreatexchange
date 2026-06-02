@@ -19,6 +19,11 @@ class StixObjectsPlaceholderSerializer(serializers.Serializer):
 class PlaceholderStixObjectSerializer(StixObjectsPlaceholderSerializer):
     pass
 
+class BundleObjects(serializers.Serializer):
+    cursor = serializers.CharField()
+    count = serializers.IntegerField()
+    objects = StixObjectsPlaceholderSerializer(many=True)
+
 
 class WarningSerializer(serializers.Serializer):
     type = serializers.CharField()

@@ -34,6 +34,7 @@ def await_result_with_timeout(async_result, timeout=5):
         try:
             return async_result.result()
         except arango.exceptions.AsyncJobResultError as e:
+            print(e.response)
             if time.time() - start_time > timeout:
                 raise TimeoutError(f"Async job did not complete within {timeout} seconds") from e
             time.sleep(0.2)  # small sleep to prevent tight loop
@@ -78,10 +79,17 @@ def get_semantic_search_properties(db: StandardDatabase):
         ]
     }
 
+def create_index_on_collection(collection_name):
+    db = get_db().begin_async_execution()
+    collection = db.collection(collection_name)
+    print("creating indexes for bundle in ", collection_name)
+    collection.add_index(dict(type='persistent', fields=['source_ref', '_is_ref', '_target_type', '_record_created'], name='bundle_source_type', inBackground=True, storedValues=['id', 'target_ref']))
+    collection.add_index(dict(type='persistent', fields=['source_ref', '_is_ref', '_record_created'], name='bundle_source', inBackground=True, storedValues=['id', 'target_ref']))
+    collection.add_index(dict(type='persistent', fields=['target_ref', '_is_ref', '_source_type', '_record_created'], name='bundle_target_type', inBackground=True, storedValues=['id', 'source_ref']))
+    collection.add_index(dict(type='persistent', fields=['target_ref', '_is_ref', '_record_created'], name='bundle_target', inBackground=True, storedValues=['id', 'source_ref']))
 
-def setup_semantic_search_view(sync=True):
 
-    semantic_view_name = settings.SEMANTIC_VIEW_NAME
+def get_db():
     client = ArangoClient(settings.ARANGODB_HOST_URL)
     db = client.db(
         settings.ARANGODB_DATABASE + "_database",
@@ -89,6 +97,11 @@ def setup_semantic_search_view(sync=True):
         settings.ARANGODB_PASSWORD,
         verify=True,
     )
+    return db
+
+def setup_semantic_search_view(sync=True):
+    semantic_view_name = settings.SEMANTIC_VIEW_NAME
+    db = get_db()
     if not sync:
         db = db.begin_async_execution()
     try:
@@ -105,10 +118,16 @@ def setup_semantic_search_view(sync=True):
             properties=get_semantic_search_properties(db),
         )
 
+def ensure_bundle_indexes():
+    db = get_db()
+    for collection_name in get_collection_names(db):
+        if collection_name.endswith('_edge_collection'):
+            create_index_on_collection(collection_name)
 
 def setup_arangodb(sync=True):
     db_view_creator.startup_func()
     setup_semantic_search_view(sync=sync)
+    ensure_bundle_indexes()
 
 
 if __name__ == "__main__":  # pragma: no cover

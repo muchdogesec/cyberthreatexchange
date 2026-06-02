@@ -1,5 +1,9 @@
+import base64
+from collections import defaultdict
 import contextlib
 import itertools
+import json
+import struct
 from types import SimpleNamespace
 import typing
 import uuid
@@ -62,6 +66,8 @@ ATTACK_FORMS = {
     "Data Component": [dict(type="x-mitre-data-component")],
     "Asset": [dict(type="x-mitre-asset")],
 }
+
+BUNDLE2_CURSOR_VERSION = 1
 
 
 ATLAS_FORMS = {
@@ -397,6 +403,55 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
             ),
         ).replace("#late_filters", "\n".join(late_filters))
         return self.execute_query(query, bind_vars=binds)
+    
+
+    def get_bundle2(self, obj_id):
+        pair_limit = 100
+        if self.query.get("limit") is not None:
+            with contextlib.suppress(TypeError, ValueError):
+                pair_limit = int(self.query.get("limit"))
+        pair_limit = max(1, min(100, pair_limit))
+
+        edge_collection = (
+            self.collection.removesuffix("_vertex_collection")
+            .removesuffix("_edge_collection")
+            + "_edge_collection"
+        )
+        query_cursor = decode_bundle_cursor(self.query.get("cursor")) or {}
+
+        is_ref_matcher = [False, None]
+        if self.query_as_bool('show_embedded_refs'):
+            is_ref_matcher.append(True)
+
+        query, binds = make_bundle_query(
+            obj_id,
+            pairLimit=pair_limit,
+            cursor=query_cursor,
+            secondary_relations=self.query_as_bool("secondary_relations", default=False),
+            types=self.query_as_array("types"),
+            secondary_types=self.query_as_array("secondary_types"),
+            edge_collection=edge_collection,
+            is_ref_matcher=is_ref_matcher
+        )
+        results = self.execute_query(query, bind_vars=binds, paginate=False)
+        if not results:
+            return Response({"objects": [], "cursor": None, "count": 0})
+        v = results[0]
+        next_window_cursor, obj_ids = make_cursor_for_next_page(
+            v["level1Edges"], v["level2Edges"], binds["pairLimit"]
+        )
+        object_map = dict(v['objects'])
+        if not query_cursor:
+            obj_ids.insert(0, obj_id)
+        objects = map(lambda x: object_map[x], obj_ids)
+        return Response({
+            "objects": objects,
+            "cursor": next_window_cursor,
+            "count": len(obj_ids),
+        })
+    
+    def get_objects(self, feed, obj_ids):
+        pass
 
     def semantic_search(self, collections=None, valid_types=ALL_SEARCH_TYPES, kwargs={}):
         valid_types = set(valid_types.copy())
@@ -711,3 +766,160 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
                     continue
         return context
 
+def decode_bundle_cursor(cursor):
+    if not cursor:
+        return {}
+    payload = base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4))
+    version, k1_len, kid_len, k2_len, index = struct.unpack("!BIIIQ", payload[:21])
+    if version != BUNDLE2_CURSOR_VERSION:
+        raise ValueError(f"Unsupported bundle cursor version: {version}")
+
+    offset = 21
+    k1 = payload[offset : offset + k1_len].decode("utf-8") or None
+    offset += k1_len
+    kid = payload[offset : offset + kid_len].decode("utf-8") or None
+    offset += kid_len
+    k2 = payload[offset : offset + k2_len].decode("utf-8") or None
+    return {"k1": k1, "kid": kid, "k2": k2, "index": int(index)}
+
+
+def encode_bundle_cursor(cursor):
+    if not cursor:
+        return None
+    values = []
+    for key in ("k1", "kid", "k2"):
+        value = cursor.get(key)
+        values.append("" if value is None else str(value))
+    index = int(cursor.get("index") or 0)
+
+    encoded_values = [value.encode("utf-8") for value in values]
+    payload = struct.pack(
+        "!BIIIQ",
+        BUNDLE2_CURSOR_VERSION,
+        *(len(value) for value in encoded_values),
+        index,
+    )
+    payload += b"".join(encoded_values)
+    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def make_bundle_query(
+    obj_id,
+    pairLimit=400,
+    cursor=None,
+    secondary_relations=False,
+    types=None,
+    secondary_types=None,
+    edge_collection=None,
+    is_ref_matcher=None,
+):
+    toplevel_query = """
+    FOR e1 IN @@edgeCollection // OPTIONS {indexHint: <EDGE_INDEX>}
+    FILTER e1.<FIELD> == @vertexId AND e1._is_ref IN @is_ref_matcher
+    FILTER (@cursor == null) OR e1._record_created > @cursor.k1
+    FILTER @types == NULL OR e1.<TYPE_FIELD> IN @types
+    LIMIT @pairLimit
+    RETURN [e1._record_modified, e1.id, e1.<FIELD2>]
+    """
+    bindVars = {
+        "vertexId": obj_id,
+        "cursor": cursor or None,
+        "pairLimit": pairLimit,
+        "secondary_relations": secondary_relations,
+        "@edgeCollection": edge_collection,
+        "types": types or None,
+        "secondary_types": secondary_types or types or None,
+        "@vertexCollection": "ctx_1e1cb4a1709c5ee49ed3ed803c60b7c3_vertex_collection",
+        "is_ref_matcher": is_ref_matcher,
+    }
+
+    queryJoined = f"""
+    LET level1Edges = (
+        FOR edge IN UNION(
+            {toplevel_query.replace("<EDGE_INDEX>", repr('super_edge_to')).replace("<FIELD>", 'target_ref').replace('<FIELD2>', 'source_ref').replace('<TYPE_FIELD>', '_source_type')},
+            {toplevel_query.replace("<EDGE_INDEX>", repr('super_edge_from')).replace("<FIELD>", 'source_ref').replace('<FIELD2>', 'target_ref').replace('<TYPE_FIELD>', '_target_type')}
+        )
+            SORT edge[0] ASC
+            LIMIT @pairLimit
+            RETURN edge
+    )
+    LET level1EdgeKeys = level1Edges[*][0]
+    LET level1EdgeValues = level1Edges[*][2]
+    LET level2_cursorEdges = (@cursor == null OR @cursor.kid == null) ? [] : (
+        FOR e IN @@edgeCollection // OPTIONS {{ indexHint: 'super_edge_from' }}
+        FILTER e.source_ref == @cursor.kid AND e._is_ref IN @is_ref_matcher
+        FILTER e._record_created > @cursor.k2
+        FILTER @secondary_types == NULL OR e._target_type IN @secondary_types
+        LIMIT @pairLimit
+        RETURN [e._record_created, e.id, e.source_ref, e.target_ref]
+    )
+    LET level2_nonCursorEdges = (
+        FOR e IN @@edgeCollection // OPTIONS {{ indexHint: 'super_edge_from' }}
+        FILTER e.source_ref IN level1EdgeValues AND e._is_ref IN @is_ref_matcher
+        FILTER @secondary_types == NULL OR e._target_type IN @secondary_types
+        LIMIT @pairLimit
+        RETURN [e._record_created, e.id, e.source_ref, e.target_ref]
+    )
+    LET level2Edges = @secondary_relations ? (
+        FOR e2 IN UNION(level2_cursorEdges, level2_nonCursorEdges)
+        SORT e2[2] ASC, e2[0] ASC
+        LIMIT @pairLimit
+        RETURN e2
+    ) : []
+    LET object_ids = UNION([@vertexId], level1Edges[*][1], level1Edges[*][-1], level2Edges[*][1], level2Edges[*][-2], level2Edges[*][-1])
+    LET objects = (
+        UNION(
+            (
+            FOR d IN @@vertexCollection
+            FILTER d.id IN object_ids
+            RETURN [d.id, KEEP(d, KEYS(d, TRUE))]
+            ),
+            (
+            FOR d IN @@edgeCollection
+            FILTER d.id IN object_ids
+            RETURN [d.id, KEEP(d, KEYS(d, TRUE))]
+            )
+        )
+    )
+    return {{
+        level1Edges,
+        level2Edges,
+        objects
+    }}
+    """
+
+    return queryJoined, bindVars
+
+def make_cursor_for_next_page(level1Edges, level2Edges, pairLimit):
+    cursor = None
+    edgedMap = defaultdict(list)
+    for edge in level2Edges:
+        edgedMap[edge[2]].append(edge)
+
+    obj_ids = []
+    seen = set()
+    pairCount = 0
+
+    def add_object_id(object_id):
+        if object_id is None or object_id in seen:
+            return
+        seen.add(object_id)
+        obj_ids.append(object_id)
+
+    for edge in level1Edges:
+        add_object_id(edge[-1])
+        add_object_id(edge[1])
+        cursor = dict(k1=edge[0], kid=edge[-1], k2=None)
+        pairCount += 1
+        for e2 in edgedMap[edge[2]]:
+            add_object_id(e2[-1])
+            add_object_id(e2[1])
+            pairCount += 1
+            cursor['k2'] = e2[0]
+            if pairCount >= pairLimit:
+                break
+        if pairCount >= pairLimit:
+            break
+    if pairCount < pairLimit:
+        cursor = None
+    return encode_bundle_cursor(cursor), obj_ids

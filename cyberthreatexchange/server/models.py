@@ -23,7 +23,7 @@ from cryptography.fernet import Fernet
 import base64
 from django.core.exceptions import ImproperlyConfigured
 from cyberthreatexchange.server.values import filters as value_filters
-from cyberthreatexchange.worker.populate_dbs import setup_arangodb
+from cyberthreatexchange.worker.populate_dbs import create_index_on_collection, setup_arangodb
 
 
 if typing.TYPE_CHECKING:
@@ -119,7 +119,9 @@ def create_collection(feed: Feed):
             objects=[feed.identity.dict],
         )
     )
+    create_index_on_collection(feed.edge_collection)
     link_collections_task()
+
 
 def link_collections_task():
     from cyberthreatexchange.worker.tasks import link_collections
