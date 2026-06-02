@@ -452,7 +452,7 @@ class FeedObjectsView(viewsets.GenericViewSet):
     def bundle(self, request, object_id, feed_id=None):
         feed = get_object_or_404(models.Feed, id=feed_id)
         helper = ArangoDBHelper(feed.vertex_collection, request)
-        return helper.get_bundle2(object_id)
+        return helper.get_bundle2(object_id, feed)
 
 
 @extend_schema_view(

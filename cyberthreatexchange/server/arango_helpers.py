@@ -405,18 +405,13 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
         return self.execute_query(query, bind_vars=binds)
     
 
-    def get_bundle2(self, obj_id):
+    def get_bundle2(self, obj_id, feed: models.Feed):
         pair_limit = 100
         if self.query.get("limit") is not None:
             with contextlib.suppress(TypeError, ValueError):
                 pair_limit = int(self.query.get("limit"))
         pair_limit = max(1, min(100, pair_limit))
-
-        edge_collection = (
-            self.collection.removesuffix("_vertex_collection")
-            .removesuffix("_edge_collection")
-            + "_edge_collection"
-        )
+        
         query_cursor = decode_bundle_cursor(self.query.get("cursor")) or {}
 
         is_ref_matcher = [False, None]
@@ -430,7 +425,8 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
             secondary_relations=self.query_as_bool("secondary_relations", default=False),
             types=self.query_as_array("types"),
             secondary_types=self.query_as_array("secondary_types"),
-            edge_collection=edge_collection,
+            edge_collection=feed.edge_collection,
+            vertex_collection=feed.vertex_collection,
             is_ref_matcher=is_ref_matcher
         )
         results = self.execute_query(query, bind_vars=binds, paginate=False)
@@ -811,6 +807,7 @@ def make_bundle_query(
     types=None,
     secondary_types=None,
     edge_collection=None,
+    vertex_collection=None,
     is_ref_matcher=None,
 ):
     toplevel_query = """
@@ -829,7 +826,7 @@ def make_bundle_query(
         "@edgeCollection": edge_collection,
         "types": types or None,
         "secondary_types": secondary_types or types or None,
-        "@vertexCollection": "ctx_1e1cb4a1709c5ee49ed3ed803c60b7c3_vertex_collection",
+        "@vertexCollection": vertex_collection,
         "is_ref_matcher": is_ref_matcher,
     }
 
