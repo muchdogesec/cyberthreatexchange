@@ -343,50 +343,7 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
             raise exceptions.NotFound({"error": "No such object"})
         if bundle:
             return self.get_bundle(matches)
-        return Response(matches[0])
-
-    def get_bundle(self, matches):
-        binds = {"@view": settings.SEMANTIC_VIEW_NAME, "matches": matches}
-        more_search_filters = []
-        late_filters = []
-
-        if not self.query_as_bool("show_embedded_refs", True):
-            more_search_filters.append("d._is_ref != TRUE")
-
-        if not self.query_as_bool("show_embedded_sros", False):
-            late_filters.append("FILTER d._is_ref != TRUE")
-
-        if types := self.query_as_array("types"):
-            late_filters.append("FILTER d.type IN @types")
-            binds["types"] = types
-
-        binds["more_bundle_ids"] = []
-
-        query = """
-    LET matched_ids = @matches[*]._id
-
-    LET bundle_ids = FLATTEN(
-        FOR d IN @@view SEARCH d.type == 'relationship' AND (d._from IN matched_ids OR d._to IN matched_ids) #more_search_filters
-        COLLECT id = d.id INTO docs LET d = FIRST(FOR dd IN docs[*].d SORT dd.modified DESC, dd._record_modified DESC LIMIT 1 RETURN dd) // dedeuplicate across multiple actip runs
-        RETURN [d._id, d._from, d._to]
-    ) 
-    
-    FOR d IN @@view SEARCH d._id IN UNION(bundle_ids, matched_ids, @more_bundle_ids)
-    #late_filters
-    COLLECT id = d.id INTO docs LET d = FIRST(FOR dd IN docs[*].d SORT dd.modified DESC, dd._record_modified DESC LIMIT 1 RETURN dd) // dedeuplicate across multiple actip runs
-    LIMIT @offset, @count
-    RETURN KEEP(d, KEYS(d, TRUE))
-"""
-        query = query.replace(
-            "#more_search_filters",
-            (
-                ""
-                if not more_search_filters
-                else f" AND {' and '.join(more_search_filters)}"
-            ),
-        ).replace("#late_filters", "\n".join(late_filters))
-        return self.execute_query(query, bind_vars=binds)
-    
+        return Response(matches[0])    
 
     def get_bundle2(self, obj_id, feed: models.Feed):
         pair_limit = 100
@@ -422,7 +379,7 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
         object_map = dict(v['objects'])
         if not query_cursor:
             obj_ids.insert(0, obj_id)
-        objects = map(lambda x: object_map[x], obj_ids)
+        objects = list(map(lambda x: object_map[x], obj_ids))
         return Response({
             "objects": objects,
             "cursor": next_window_cursor,

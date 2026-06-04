@@ -8,7 +8,12 @@ from unittest.mock import Mock, MagicMock, patch
 from types import SimpleNamespace
 from django.http import HttpRequest
 from rest_framework.request import Request
-from cyberthreatexchange.server.arango_helpers import ArangoDBHelper
+from cyberthreatexchange.server.arango_helpers import (
+    ArangoDBHelper,
+    decode_bundle_cursor,
+    encode_bundle_cursor,
+    make_bundle_query,
+)
 from cyberthreatexchange.server import models
 from cyberthreatexchange.worker.tasks import upload_bundle_task
 from tests.src.data import (
@@ -158,6 +163,80 @@ class TestArangoDBHelperWithRealData:
                 "threat-actor--899ce53f-13a0-479b-a0e4-67d46e241542",
             ]
         )
+
+    def test_bundle_cursor_round_trip(self):
+        """Test the packed bundle cursor can be encoded and decoded."""
+        cursor = encode_bundle_cursor(
+            {
+                "k1": "2024-01-01T00:00:00.000Z",
+                "kid": "edge--1",
+                "k2": "2024-01-02T00:00:00.000Z",
+                "index": 7,
+            }
+        )
+        assert isinstance(cursor, str)
+        assert decode_bundle_cursor(cursor) == {
+            "k1": "2024-01-01T00:00:00.000Z",
+            "kid": "edge--1",
+            "k2": "2024-01-02T00:00:00.000Z",
+            "index": 7,
+        }
+
+    def test_make_bundle_query_uses_feed_edge_collection(self):
+        """Test bundle query binds the feed edge collection dynamically."""
+        query, binds = make_bundle_query(
+            "object--1",
+            edge_collection="ctx_test_edge_collection",
+        )
+        assert binds["@edgeCollection"] == "ctx_test_edge_collection"
+
+    def test_get_bundle2_uses_encoded_cursor_and_parameters(self, arango_helper):
+        """Test bundle2 returns an encoded cursor and forwards query parameters."""
+        feed = arango_helper.feed
+        helper = ArangoDBHelper(
+            feed.vertex_collection,
+            make_mock_request(
+                limit="2",
+                cursor=encode_bundle_cursor({"k1": "2024-01-01T00:00:00.000Z", "kid": "edge--x", "k2": None}),
+                secondary_relations="true",
+                types="campaign",
+                secondary_types="indicator",
+            ),
+        )
+        helper.query_as_bool = Mock(
+            side_effect=lambda key, default=False: {"secondary_relations": True}.get(
+                key, default
+            )
+        )
+        helper.query_as_array = Mock(
+            side_effect=lambda key: {
+                "types": ["campaign"],
+                "secondary_types": ["indicator"],
+            }.get(key)
+        )
+        helper.execute_query = Mock(
+            return_value=[
+                {
+                    "level1Edges": [
+                        ["2024-01-01T00:00:00.000Z", "edge-1", "vertex-a"],
+                        ["2024-01-02T00:00:00.000Z", "edge-2", "vertex-b"],
+                    ],
+                    "level2Edges": [],
+                    "objects": [
+                        ("edge-1", {"id": "edge-2"}),
+                        ("vertex-a", {"id": "vertex-a"}),
+                        ("edge-N", {"id": "not there"}),
+                        ("edge-2", {"id": "edge-2"}),
+                        ("vertex-b", {"id": "vertex-b"}),
+                    ]
+                }
+            ]
+        )
+
+        response = helper.get_bundle2("vertex-a", feed)
+        assert response.status_code == 200
+        assert response.data["objects"] == [{'id': 'vertex-a'}, {'id': 'edge-2'}, {'id': 'vertex-b'}, {'id': 'edge-2'}]
+        assert response.data["count"] == 4
 
     @pytest.mark.parametrize(
         "params,expected_ids",
