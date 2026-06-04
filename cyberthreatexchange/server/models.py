@@ -111,6 +111,7 @@ def create_collection(feed: Feed):
         host_url=settings.ARANGODB_HOST_URL,
         create_collection=True,
         versioning_mode='versionless',
+        skip_default_indexes=True,
     )
     s2a.run(
         data=dict(
@@ -148,7 +149,7 @@ def update_identities(feed: Feed):
     from django.http.request import HttpRequest
     from rest_framework.request import Request
 
-    helper = ArangoDBHelper(settings.VIEW_NAME, Request(HttpRequest()))
+    helper = ArangoDBHelper('', Request(HttpRequest()))
     try:
         updated_keys = helper.execute_query(query, bind_vars=binds, paginate=False)
         logging.info(f"updated {len(updated_keys)} identities for {feed.id}")

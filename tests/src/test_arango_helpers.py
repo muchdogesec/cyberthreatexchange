@@ -93,19 +93,6 @@ class TestGetObjectByExternalId:
             assert not has_result, f"Expected no result for version {version} but got an error instead."
 
 
-class TestGetVersions:
-    """Test get_versions method."""
-
-    def test_get_versions_returns_list(self, arango_helper):
-
-        response = arango_helper.get_versions(
-            "malware--d1c612bc-146f-4b65-b7b0-9a54a14150a4"
-        )
-
-        assert response.status_code == 200
-        assert response.data == dict(versions=["2020-01-15T10:00:00.000Z"])
-
-
 class TestGetExistingObjects:
     """Test get_existing_objects method."""
 
@@ -155,8 +142,8 @@ class TestArangoDBHelperWithRealData:
         helper = ArangoDBHelper(feed.vertex_collection, None)
 
         # Get bundle for the malware object
-        bundle = helper.get_object_by_external_id(
-            "malware--d1c612bc-146f-4b65-b7b0-9a54a14150a4", bundle=True
+        bundle = helper.get_bundle2(
+            "malware--d1c612bc-146f-4b65-b7b0-9a54a14150a4", feed
         ).data
         assert {k["id"] for k in bundle["objects"]}.issuperset(
             [

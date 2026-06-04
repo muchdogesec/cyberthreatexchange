@@ -125,7 +125,6 @@ def ensure_bundle_indexes():
             create_index_on_collection(collection_name)
 
 def setup_arangodb(sync=True):
-    db_view_creator.startup_func()
     setup_semantic_search_view(sync=sync)
     ensure_bundle_indexes()
 

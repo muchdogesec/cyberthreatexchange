@@ -341,29 +341,12 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
         matches = matches[:1]
         if not matches:
             raise exceptions.NotFound({"error": "No such object"})
-        
         if bundle:
             return self.get_bundle(matches)
         return Response(matches[0])
 
-    def get_versions(self, stix_id):
-        query = """
-    FOR d IN @@view SEARCH d.id == @stix_id
-    SORT d.modified DESC
-    RETURN DISTINCT d.modified
-"""
-        return Response(
-            dict(
-                versions=self.execute_query(
-                    query,
-                    bind_vars={"@view": self.semantic_search_view, "stix_id": stix_id},
-                    paginate=False,
-                )
-            )
-        )
-
     def get_bundle(self, matches):
-        binds = {"@view": settings.VIEW_NAME, "matches": matches}
+        binds = {"@view": settings.SEMANTIC_VIEW_NAME, "matches": matches}
         more_search_filters = []
         late_filters = []
 

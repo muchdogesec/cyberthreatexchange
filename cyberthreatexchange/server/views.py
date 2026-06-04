@@ -332,15 +332,6 @@ class FeedView(viewsets.ModelViewSet):
         ),
         responses={204: None},
     ),
-    versions=extend_schema(
-        summary="Get object versions from a feed",
-        description=textwrap.dedent(
-            """
-            Returns a list of all versions of the object in the database. You can then use the version returned on the GET objects endpoint to see the content for that version of the object.
-            """
-        ),
-        responses=serializers.StixVersionsSerializer(),
-    ),
     bundle=extend_schema(
         summary="Get bundle of related objects from a feed",
         description=textwrap.dedent(
@@ -441,12 +432,6 @@ class FeedObjectsView(viewsets.GenericViewSet):
         return Response(
             status=status.HTTP_204_NO_CONTENT,
         )
-
-    @decorators.action(detail=True, methods=["GET"])
-    def versions(self, request, object_id, feed_id=None):
-        feed = get_object_or_404(models.Feed, id=feed_id)
-        helper = ArangoDBHelper(feed.vertex_collection, request)
-        return helper.get_versions(object_id)
 
     @decorators.action(detail=True, methods=["GET"])
     def bundle(self, request, object_id, feed_id=None):
