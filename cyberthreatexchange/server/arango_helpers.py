@@ -753,7 +753,7 @@ def make_bundle_query(
     toplevel_query = """
     FOR e1 IN @@edgeCollection // OPTIONS {indexHint: <EDGE_INDEX>}
     FILTER e1.<FIELD> == @vertexId AND e1._is_ref IN @is_ref_matcher
-    FILTER (@cursor == null) OR e1._record_created > @cursor.k1
+    FILTER (@cursor == null) OR e1._record_modified > @cursor.k1
     FILTER @types == NULL OR e1.<TYPE_FIELD> IN @types
     LIMIT @pairLimit
     RETURN [e1._record_modified, e1.id, e1.<FIELD2>]
@@ -785,17 +785,17 @@ def make_bundle_query(
     LET level2_cursorEdges = (@cursor == null OR @cursor.kid == null) ? [] : (
         FOR e IN @@edgeCollection // OPTIONS {{ indexHint: 'super_edge_from' }}
         FILTER e.source_ref == @cursor.kid AND e._is_ref IN @is_ref_matcher
-        FILTER e._record_created > @cursor.k2
+        FILTER e._record_modified > @cursor.k2
         FILTER @secondary_types == NULL OR e._target_type IN @secondary_types
         LIMIT @pairLimit
-        RETURN [e._record_created, e.id, e.source_ref, e.target_ref]
+        RETURN [e._record_modified, e.id, e.source_ref, e.target_ref]
     )
     LET level2_nonCursorEdges = (
         FOR e IN @@edgeCollection // OPTIONS {{ indexHint: 'super_edge_from' }}
         FILTER e.source_ref IN level1EdgeValues AND e._is_ref IN @is_ref_matcher
         FILTER @secondary_types == NULL OR e._target_type IN @secondary_types
         LIMIT @pairLimit
-        RETURN [e._record_created, e.id, e.source_ref, e.target_ref]
+        RETURN [e._record_modified, e.id, e.source_ref, e.target_ref]
     )
     LET level2Edges = @secondary_relations ? (
         FOR e2 IN UNION(level2_cursorEdges, level2_nonCursorEdges)
