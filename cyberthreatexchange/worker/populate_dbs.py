@@ -83,10 +83,10 @@ def create_index_on_collection(collection_name):
     db = get_db().begin_async_execution()
     collection = db.collection(collection_name)
     print("creating indexes for bundle in ", collection_name)
-    collection.add_index(dict(type='persistent', fields=['source_ref', '_is_ref', '_target_type', '_record_created'], name='bundle_source_type', inBackground=True, storedValues=['id', 'target_ref']))
-    collection.add_index(dict(type='persistent', fields=['source_ref', '_is_ref', '_record_created'], name='bundle_source', inBackground=True, storedValues=['id', 'target_ref']))
-    collection.add_index(dict(type='persistent', fields=['target_ref', '_is_ref', '_source_type', '_record_created'], name='bundle_target_type', inBackground=True, storedValues=['id', 'source_ref']))
-    collection.add_index(dict(type='persistent', fields=['target_ref', '_is_ref', '_record_created'], name='bundle_target', inBackground=True, storedValues=['id', 'source_ref']))
+    collection.add_index(dict(type='persistent', fields=['source_ref', '_is_ref', '_target_type', '_record_modified'], name='bundle_source_type', inBackground=True, storedValues=['id', 'target_ref']))
+    collection.add_index(dict(type='persistent', fields=['source_ref', '_is_ref', '_record_modified'], name='bundle_source', inBackground=True, storedValues=['id', 'target_ref']))
+    collection.add_index(dict(type='persistent', fields=['target_ref', '_is_ref', '_source_type', '_record_modified'], name='bundle_target_type', inBackground=True, storedValues=['id', 'source_ref']))
+    collection.add_index(dict(type='persistent', fields=['target_ref', '_is_ref', '_record_modified'], name='bundle_target', inBackground=True, storedValues=['id', 'source_ref']))
 
 
 def get_db():
