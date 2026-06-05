@@ -48,7 +48,6 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'dogesec_commons.objects',
     'drf_spectacular',
     'django.contrib.postgres',
     'dogesec_commons.identity',
@@ -186,7 +185,7 @@ SPECTACULAR_SETTINGS: dict[str, Any] = {
     ]
 }
 
-SEMANTIC_VIEW_NAME = "semantic_search_view"
+JOINED_VIEW_NAME = "joined_view"
 ARANGODB_USERNAME   = os.getenv('ARANGODB_USERNAME')
 ARANGODB_PASSWORD   = os.getenv('ARANGODB_PASSWORD')
 ARANGODB_HOST_URL   = os.getenv("ARANGODB_HOST_URL")

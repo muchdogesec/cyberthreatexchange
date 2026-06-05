@@ -175,7 +175,6 @@ ATTACK_SORT_FIELDS = CTI_SORT_FIELDS + ["attack_id_ascending", "attack_id_descen
 class ArangoDBHelper(DSC_ArangoDBHelper):
     max_page_size = settings.MAXIMUM_PAGE_SIZE
     page_size = settings.DEFAULT_PAGE_SIZE
-    semantic_search_view = settings.SEMANTIC_VIEW_NAME
 
     @classmethod
     def get_paginated_response(
@@ -276,7 +275,7 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
         return list(cursor)
 
     def get_object_by_external_id(
-        self, ext_id: str, revokable=False, bundle=False, nav_mode=False
+        self, ext_id: str, revokable=False, nav_mode=False
     ):
         bind_vars = {
             "@collection": self.collection,
@@ -315,8 +314,6 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
         query = query.replace("#main_filter", main_filter).replace(
             "#filters", "\n".join(filters)
         )
-        if bundle:
-            bind_vars.update(keep_values=["_id"])
         if nav_mode:
             bind_vars.update(
                 keep_values=[
@@ -341,17 +338,18 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
         matches = matches[:1]
         if not matches:
             raise exceptions.NotFound({"error": "No such object"})
-        if bundle:
-            return self.get_bundle(matches)
-        return Response(matches[0])    
-
-    def get_bundle2(self, obj_id, feed: models.Feed):
-        pair_limit = 100
+        return Response(matches[0])
+    
+    def get_limit(self):
+        limit = self.page_size
         if self.query.get("limit") is not None:
             with contextlib.suppress(TypeError, ValueError):
-                pair_limit = int(self.query.get("limit"))
-        pair_limit = max(1, min(100, pair_limit))
-        
+                limit = int(self.query.get("limit"))
+        limit = max(1, min(self.max_page_size, limit))
+        return limit
+
+    def get_bundle(self, obj_id, feed: models.Feed):
+        pair_limit = self.get_limit()
         query_cursor = decode_bundle_cursor(self.query.get("cursor")) or {}
 
         is_ref_matcher = [False, None]
@@ -371,7 +369,7 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
         )
         results = self.execute_query(query, bind_vars=binds, paginate=False)
         if not results:
-            return Response({"objects": [], "cursor": None, "count": 0})
+            return Response({"objects": [], "next": None, "count": 0})
         v = results[0]
         next_window_cursor, obj_ids = make_cursor_for_next_page(
             v["level1Edges"], v["level2Edges"], binds["pairLimit"]
@@ -382,115 +380,33 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
         objects = list(map(lambda x: object_map[x], obj_ids))
         return Response({
             "objects": objects,
-            "cursor": next_window_cursor,
+            "next": next_window_cursor,
             "count": len(obj_ids),
         })
     
-    def get_objects(self, feed, obj_ids):
-        pass
-
-    def semantic_search(self, collections=None, valid_types=ALL_SEARCH_TYPES, kwargs={}):
-        valid_types = set(valid_types.copy())
-        binds = {}
-        search_filters = []
-        extra_filters = []
-
-        if updated_since := self.query.get("updated_since"):
-            search_filters.append("doc._record_modified > @updated_since")
-            binds.update(updated_since=updated_since)
-
-        if name := self.query.get("name"):
-            extra_filters.append("FILTER CONTAINS(LOWER(doc.name), @name_param)")
-            binds.update(name_param=name.lower())
-
-        search_filters.append("doc._is_latest == TRUE")
-        if stix_ids := self.query_as_array("stix_ids"):
-            binds["stix_ids"] = stix_ids
-            search_filters.append("doc.id IN @stix_ids")
-            
-        show_embedded_refs = self.query_as_bool("show_embedded_refs", False)
-        if not show_embedded_refs:
-            extra_filters.append("FILTER doc._is_ref != TRUE")
-
-        if value := self.query.get("value"):
-            binds["search_value"] = value.lower()
-            extra_filters.append(
-                """
-                FILTER (
-                    doc.type == 'artifact' AND CONTAINS(LOWER(doc.payload_bin), @search_value) OR
-                    doc.type == 'autonomous-system' AND CONTAINS(LOWER(doc.number), @search_value) OR
-                    doc.type == 'bank-account' AND CONTAINS(LOWER(doc.iban), @search_value) OR
-                    doc.type == 'payment-card' AND CONTAINS(LOWER(doc.value), @search_value) OR
-                    doc.type == 'cryptocurrency-transaction' AND CONTAINS(LOWER(doc.value), @search_value) OR
-                    doc.type == 'cryptocurrency-wallet' AND CONTAINS(LOWER(doc.value), @search_value) OR
-                    doc.type == 'directory' AND CONTAINS(LOWER(doc.path), @search_value) OR
-                    doc.type == 'domain-name' AND CONTAINS(LOWER(doc.value), @search_value) OR
-                    doc.type == 'email-addr' AND CONTAINS(LOWER(doc.value), @search_value) OR
-                    doc.type == 'email-message' AND CONTAINS(LOWER(doc.body), @search_value) OR
-                    doc.type == 'file' AND CONTAINS(LOWER(doc.name), @search_value) OR
-                    doc.type == 'ipv4-addr' AND CONTAINS(LOWER(doc.value), @search_value) OR
-                    doc.type == 'ipv6-addr' AND CONTAINS(LOWER(doc.value), @search_value) OR
-                    doc.type == 'mac-addr' AND CONTAINS(LOWER(doc.value), @search_value) OR
-                    doc.type == 'mutex' AND CONTAINS(LOWER(doc.value), @search_value) OR
-                    doc.type == 'network-traffic' AND CONTAINS(LOWER(doc.protocols), @search_value) OR
-                    doc.type == 'phone-number' AND CONTAINS(LOWER(doc.value), @search_value) OR
-                    doc.type == 'process' AND CONTAINS(LOWER(doc.pid), @search_value) OR
-                    doc.type == 'software' AND CONTAINS(LOWER(doc.name), @search_value) OR
-                    doc.type == 'url' AND CONTAINS(LOWER(doc.value), @search_value) OR
-                    doc.type == 'user-account' AND CONTAINS(LOWER(doc.display_name), @search_value) OR
-                    doc.type == 'user-agent' AND CONTAINS(LOWER(doc.string), @search_value) OR
-                    doc.type == 'windows-registry-key' AND CONTAINS(LOWER(doc.key), @search_value) OR
-                    doc.type == 'x509-certificate' AND CONTAINS(LOWER(doc.subject), @search_value)
-                    //generic
-                    OR
-                    CONTAINS(LOWER(doc.value), @search_value) OR
-                    CONTAINS(LOWER(doc.name), @search_value) OR
-                    CONTAINS(LOWER(doc.number), @search_value)
-                )
-                """.strip()
-            )
-
-        binds["types"] = list(valid_types)
-        search_filters.append("doc.type IN @types")
-        if types := self.query_as_array("types"):
-            binds["types"] = list(valid_types.intersection(types))
-        collections_set = [] if not collections else [set(collections)]
-        if qq := self.query_as_array("feed_ids"):
-            collections_set.append(
-                set([f"ctx_{fid.replace('-', '')}_vertex_collection" for fid in qq])
-            )
-
-        if qq := self.query_as_array("author_ids"):
-            author_collections = []
-            for aid in qq:
-                author_collections.extend(
-                    [
-                        feed.vertex_collection
-                        for feed in models.Feed.objects.filter(identity_id=aid)
-                    ]
-                )
-            collections_set.append(set(author_collections))
-        if collections_set:
-            collections = set.intersection(*collections_set)
-            binds["filtered_collections"] = list(collections)
-            search_filters.append(
-                'ANALYZER(STARTS_WITH(doc._id, @filtered_collections), "identity")'
-            )
-
-        keep_verb = None
-        if show_feed_id := self.query_as_bool("show_feed_id", False):
-            keep_verb = 'KEEP(doc, APPEND(KEYS(doc, TRUE), "_id"))'
-        resp = self.generic_query(
-            self.semantic_search_view,
-            search_filters,
-            extra_filters,
-            binds,
-            return_verb=keep_verb,
-            **kwargs
+    def get_objects(self, feed):
+        limit = self.get_limit()
+        query, binds = make_objects_query(
+            feed,
+            types=self.query_as_array("types"),
+            added_after=self.query.get("added_after") or None,
+            limit=limit,
+            show_embedded_refs=self.query_as_bool("show_embedded_refs", False),
         )
-        if show_feed_id:
-            self.add_feed_id(resp.data["objects"])
-        return resp
+        results = self.execute_query(
+            query,
+            bind_vars=binds,
+            paginate=False,
+        )
+        next_added_after = None
+        for result in results:
+            next_added_after = result.pop("_record_modified", next_added_after)
+        return Response({
+            "objects": results,
+            "next": next_added_after,
+            "count": len(results),
+        })
+
 
     def get_existing_objects(
         self,
@@ -581,15 +497,21 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
         return resp
     
     def get_context_for_objects(self, object_ids):
-        bind_vars = {
-            "object_ids": tuple(set(object_ids)),
-        }
-        objects = self.generic_query(self.semantic_search_view, [
-            'doc._is_latest == TRUE',
-            'doc.id IN @object_ids',
-        ], [], bind_vars, use_limit=False, sort_statement="// DONT SORT")
-        objects_by_id = {obj["id"]: obj for obj in objects}
-        return objects_by_id
+        query = """
+        FOR doc IN joined_view
+        SEARCH doc.id IN @object_ids
+        RETURN [KEEP(doc, KEYS(doc, TRUE)), doc._id]
+        """
+        objects = self.execute_query(query, bind_vars={
+            'object_ids': list(object_ids.keys())
+        }, paginate=False, full_count=False)
+        retval = {}
+        for obj, _id in objects:
+            feed_id_stripped = _id.split('_')[1]
+            if object_ids[obj['id']] == feed_id_stripped:
+                retval[obj['id']] = obj
+        
+        return retval
 
     @staticmethod
     def add_feed_id(objects):
@@ -738,6 +660,44 @@ def encode_bundle_cursor(cursor):
     payload += b"".join(encoded_values)
     return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
 
+
+def make_objects_query(
+    feed: models.Feed,
+    types: list[str],
+    added_after: str,
+    limit: int,
+    show_embedded_refs: bool,
+):
+    query = """
+    LET edges = @types == NULL OR CONTAINS(@types, "relationship") ? (
+        FOR edge IN @@edge_collection
+        FILTER edge._is_ref IN @is_ref_matcher
+        FILTER @added_after == NULL OR edge._record_modified > @added_after
+        SORT edge._record_modified ASC
+        LIMIT @limit
+        RETURN edge
+    ) : []
+    LET vertices = (
+        FOR vertex IN @@vertex_collection
+        FILTER @types == NULL OR vertex.type IN @types
+        FILTER @added_after == NULL OR vertex._record_modified > @added_after
+        SORT vertex._record_modified ASC
+        LIMIT @limit
+        RETURN vertex
+    )
+    FOR doc IN UNION(edges, vertices)
+    SORT doc._record_modified ASC
+    RETURN KEEP(doc, APPEND(KEYS(doc, TRUE), '_record_modified'))
+    """
+    bind_vars = {
+        '@edge_collection': feed.edge_collection,
+        '@vertex_collection': feed.vertex_collection,
+        'types': types or None,
+        'added_after': added_after,
+        'is_ref_matcher': [True, False] if show_embedded_refs else [False],
+        'limit': limit,
+    }
+    return query, bind_vars
 
 def make_bundle_query(
     obj_id,

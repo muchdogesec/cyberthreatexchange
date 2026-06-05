@@ -10,7 +10,7 @@ from dogesec_commons.utils.serializers import JSONSchemaSerializer
 from rest_framework import serializers, validators
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework.fields import get_error_detail
-
+from drf_spectacular.utils import extend_schema_serializer
 
 class StixObjectsPlaceholderSerializer(serializers.Serializer):
     type = serializers.CharField()
@@ -19,8 +19,9 @@ class StixObjectsPlaceholderSerializer(serializers.Serializer):
 class PlaceholderStixObjectSerializer(StixObjectsPlaceholderSerializer):
     pass
 
+@extend_schema_serializer(many=False)
 class BundleObjects(serializers.Serializer):
-    cursor = serializers.CharField()
+    next = serializers.CharField()
     count = serializers.IntegerField()
     objects = StixObjectsPlaceholderSerializer(many=True)
 

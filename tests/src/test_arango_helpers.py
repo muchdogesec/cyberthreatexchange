@@ -13,6 +13,7 @@ from cyberthreatexchange.server.arango_helpers import (
     decode_bundle_cursor,
     encode_bundle_cursor,
     make_bundle_query,
+    make_objects_query,
 )
 from cyberthreatexchange.server import models
 from cyberthreatexchange.worker.tasks import upload_bundle_task
@@ -125,6 +126,79 @@ class TestGetExistingObjects:
         }
 
 
+class TestGetObjects:
+    """Test feed object listing queries."""
+
+    def test_make_objects_query_uses_feed_collections(self):
+        feed = SimpleNamespace(
+            vertex_collection="ctx_test_vertex_collection",
+            edge_collection="ctx_test_edge_collection",
+        )
+
+        query, binds = make_objects_query(
+            feed,
+            types=["malware"],
+            added_after="2024-01-01T00:00:00.000Z",
+            limit=25,
+            show_embedded_refs=False,
+        )
+
+        assert "@@vertex_collection" in query
+        assert "@@edge_collection" in query
+        assert "edge._record_modified > @added_after" in query
+        assert "vertex._record_modified > @added_after" in query
+        assert binds == {
+            "@edge_collection": "ctx_test_edge_collection",
+            "@vertex_collection": "ctx_test_vertex_collection",
+            "types": ["malware"],
+            "added_after": "2024-01-01T00:00:00.000Z",
+            "is_ref_matcher": [False],
+            "limit": 25,
+        }
+
+    def test_get_objects_returns_next_cursor_and_strips_record_modified(self, arango_helper):
+        feed = arango_helper.feed
+        arango_helper.query = {
+            "limit": "2",
+            "added_after": "2024-01-01T00:00:00.000Z",
+        }
+        arango_helper.query_as_array = Mock(return_value=["malware"])
+        arango_helper.query_as_bool = Mock(return_value=False)
+        arango_helper.execute_query = Mock(
+            return_value=[
+                {
+                    "id": "malware--1",
+                    "type": "malware",
+                    "_record_modified": "2024-01-01T10:00:00.000Z",
+                },
+                {
+                    "id": "malware--2",
+                    "type": "malware",
+                    "_record_modified": "2024-01-01T11:00:00.000Z",
+                },
+            ]
+        )
+
+        response = arango_helper.get_objects(feed)
+
+        assert response.status_code == 200
+        assert response.data == {
+            "objects": [
+                {"id": "malware--1", "type": "malware"},
+                {"id": "malware--2", "type": "malware"},
+            ],
+            "next": "2024-01-01T11:00:00.000Z",
+            "count": 2,
+        }
+        assert arango_helper.execute_query.call_count == 1
+        called_query, called_kwargs = arango_helper.execute_query.call_args
+        assert "@@vertex_collection" in called_query[0]
+        assert "@@edge_collection" in called_query[0]
+        assert called_kwargs["paginate"] is False
+        assert called_kwargs["bind_vars"]["limit"] == 2
+        assert called_kwargs["bind_vars"]["types"] == ["malware"]
+
+
 # Integration-style tests that upload real data
 class TestArangoDBHelperWithRealData:
 
@@ -147,7 +221,7 @@ class TestArangoDBHelperWithRealData:
         helper = ArangoDBHelper(feed.vertex_collection, None)
 
         # Get bundle for the malware object
-        bundle = helper.get_bundle2(
+        bundle = helper.get_bundle(
             "malware--d1c612bc-146f-4b65-b7b0-9a54a14150a4", feed
         ).data
         assert {k["id"] for k in bundle["objects"]}.issuperset(
@@ -233,127 +307,8 @@ class TestArangoDBHelperWithRealData:
             ]
         )
 
-        response = helper.get_bundle2("vertex-a", feed)
+        response = helper.get_bundle("vertex-a", feed)
         assert response.status_code == 200
         assert response.data["objects"] == [{'id': 'vertex-a'}, {'id': 'edge-2'}, {'id': 'vertex-b'}, {'id': 'edge-2'}]
         assert response.data["count"] == 4
-
-    @pytest.mark.parametrize(
-        "params,expected_ids",
-        [
-            (
-                {},
-                {
-                    "autonomous-system--f91b6a7a-2e9c-4e5e-8e5e-5e5e5e5e5e5e",
-                    "ipv4-addr--ff26c055-6336-4bc6-b60e-6d2c7e6d5e5e",
-                    "mac-addr--a8b2c3d4-e5f6-4a5b-8c7d-9e8f7a6b5c4d",
-                    "relationship--d0e1f2a3-b4c5-4d4e-bf8a-9b0c1d2e3f4a",
-                    "relationship--c3d4e5f6-a7b8-4c7d-8e1f-2a3b4c5d6e7f",
-                    "location--a6e9345f-5a54-4825-8b7e-9f4e5e5e5e5e",
-                    "attack-pattern--2e34237d-8574-43f6-aace-ae2915de8597",
-                    "campaign--8e2e2d2b-17d4-4cbf-938f-98ee46b3cd3f",
-                    "marking-definition--55d920b0-5e8b-4f79-9ee9-91f868d9b421",
-                    "marking-definition--613f2e26-407d-48c7-9eca-b8e91df99dc9",
-                    "identity--9779a2db-f98c-5f4b-8d08-8ee04e02dbb5",
-                    "identity--c78cb6e5-0c4b-4611-8297-d1b8b55e40b5",
-                    "identity--72e906ce-ca1b-5d73-adcd-9ea9eb66a1b4",
-                    "relationship--a7b8c9d0-e1f2-4a1b-8c5d-6e7f8a9b0c1d",
-                    "relationship--e5f6a7b8-c9d0-4e9f-aa3b-4c5d6e7f8a9b",
-                    "marking-definition--72e906ce-ca1b-5d73-adcd-9ea9eb66a1b4",
-                    "relationship--a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d",
-                    "marking-definition--939a9414-2ddd-4d32-a0cd-375ea402b003",
-                    "marking-definition--f88d31f6-486f-44da-b317-01333bde0b82",
-                    "tool--242f3da3-4425-4d11-8f5c-b842886da966",
-                    "identity--f3a5f413-0ccd-4821-9778-f4b70ecbb47f",
-                    "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da",
-                    "relationship--f6a7b8c9-d0e1-4f0a-bb4c-5d6e7f8a9b0c",
-                    "marking-definition--bab4a63c-aed9-4cf5-a766-dfca5abac2bb",
-                    "marking-definition--94868c89-83c2-464b-929b-a1a8aa3c8487",
-                    "malware--d1c612bc-146f-4b65-b7b0-9a54a14150a4",
-                    "relationship--e1f2a3b4-c5d6-4e5f-8a9b-0c1d2e3f4a5b",
-                    "relationship--b2c3d4e5-f6a7-4b6c-9d0e-1f2a3b4c5d6e",
-                    "marking-definition--e828b379-4e03-4974-9ac4-e53a884c97c1",
-                    "relationship--b8c9d0e1-f2a3-4b2c-9d6e-7f8a9b0c1d2e",
-                    "relationship--d4e5f6a7-b8c9-4d8e-9f2a-3b4c5d6e7f8a",
-                    "indicator--8e2e2d2b-17d4-4cbf-938f-98ee46b3cd3f",
-                    "marking-definition--5e57c739-391a-4eb3-b6be-7d15ca92d5ed",
-                    "relationship--c9d0e1f2-a3b4-4c3d-ae7f-8a9b0c1d2e3f",
-                },
-            ),
-            (
-                {
-                    "show_embedded_refs": "true",
-                },
-                {
-                    "autonomous-system--f91b6a7a-2e9c-4e5e-8e5e-5e5e5e5e5e5e",
-                    "ipv4-addr--ff26c055-6336-4bc6-b60e-6d2c7e6d5e5e",
-                    "mac-addr--a8b2c3d4-e5f6-4a5b-8c7d-9e8f7a6b5c4d",
-                    "relationship--d0e1f2a3-b4c5-4d4e-bf8a-9b0c1d2e3f4a",
-                    "relationship--c3d4e5f6-a7b8-4c7d-8e1f-2a3b4c5d6e7f",
-                    "location--a6e9345f-5a54-4825-8b7e-9f4e5e5e5e5e",
-                    "attack-pattern--2e34237d-8574-43f6-aace-ae2915de8597",
-                    "campaign--8e2e2d2b-17d4-4cbf-938f-98ee46b3cd3f",
-                    "marking-definition--55d920b0-5e8b-4f79-9ee9-91f868d9b421",
-                    "marking-definition--613f2e26-407d-48c7-9eca-b8e91df99dc9",
-                    "identity--9779a2db-f98c-5f4b-8d08-8ee04e02dbb5",
-                    "identity--c78cb6e5-0c4b-4611-8297-d1b8b55e40b5",
-                    "identity--72e906ce-ca1b-5d73-adcd-9ea9eb66a1b4",
-                    "relationship--a7b8c9d0-e1f2-4a1b-8c5d-6e7f8a9b0c1d",
-                    "relationship--e5f6a7b8-c9d0-4e9f-aa3b-4c5d6e7f8a9b",
-                    "marking-definition--72e906ce-ca1b-5d73-adcd-9ea9eb66a1b4",
-                    "relationship--a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d",
-                    "marking-definition--939a9414-2ddd-4d32-a0cd-375ea402b003",
-                    "marking-definition--f88d31f6-486f-44da-b317-01333bde0b82",
-                    "tool--242f3da3-4425-4d11-8f5c-b842886da966",
-                    "identity--f3a5f413-0ccd-4821-9778-f4b70ecbb47f",
-                    "marking-definition--34098fce-860f-48ae-8e50-ebd3cc5e41da",
-                    "relationship--f6a7b8c9-d0e1-4f0a-bb4c-5d6e7f8a9b0c",
-                    "relationship--bbc10a4e-90a0-5a52-b6d1-8d8276394572",
-                    "marking-definition--bab4a63c-aed9-4cf5-a766-dfca5abac2bb",
-                    "marking-definition--94868c89-83c2-464b-929b-a1a8aa3c8487",
-                    "malware--d1c612bc-146f-4b65-b7b0-9a54a14150a4",
-                    "relationship--e1f2a3b4-c5d6-4e5f-8a9b-0c1d2e3f4a5b",
-                    "relationship--b2c3d4e5-f6a7-4b6c-9d0e-1f2a3b4c5d6e",
-                    "marking-definition--e828b379-4e03-4974-9ac4-e53a884c97c1",
-                    "relationship--67c37025-76ec-52ad-8098-48d8f3fbdd9b",
-                    "relationship--b8c9d0e1-f2a3-4b2c-9d6e-7f8a9b0c1d2e",
-                    "relationship--d4e5f6a7-b8c9-4d8e-9f2a-3b4c5d6e7f8a",
-                    "indicator--8e2e2d2b-17d4-4cbf-938f-98ee46b3cd3f",
-                    "marking-definition--5e57c739-391a-4eb3-b6be-7d15ca92d5ed",
-                    "relationship--c9d0e1f2-a3b4-4c3d-ae7f-8a9b0c1d2e3f",
-                },
-            ),
-            ({"types": "campaign"}, ["campaign--8e2e2d2b-17d4-4cbf-938f-98ee46b3cd3f"]),
-            (
-                {"types": "indicator"},
-                ["indicator--8e2e2d2b-17d4-4cbf-938f-98ee46b3cd3f"],
-            ),
-            (
-                {"name": "Cobalt Strike"},
-                [
-                    "malware--d1c612bc-146f-4b65-b7b0-9a54a14150a4",
-                    "indicator--8e2e2d2b-17d4-4cbf-938f-98ee46b3cd3f",
-                ],
-            ),
-            (
-                {
-                    "stix_ids": "relationship--a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d,malware--d1c612bc-146f-4b65-b7b0-9a54a14150a4,indicator--8e2e2d2b-17d4-4cbf-938f-98ee46b3cd3f"
-                },
-                [
-                    "malware--d1c612bc-146f-4b65-b7b0-9a54a14150a4",
-                    "indicator--8e2e2d2b-17d4-4cbf-938f-98ee46b3cd3f",
-                    "relationship--a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d",
-                ],
-            ),
-        ],
-    )
-    def test_semantic_search_params(self, arango_helper, params, expected_ids):
-        """Test semantic search on uploaded data."""
-        request = make_mock_request(**(params or {}))
-        feed = arango_helper.feed
-
-        helper = ArangoDBHelper(feed.vertex_collection, request)
-        response = helper.semantic_search(collections=[feed.collection_name])
-        objects = response.data.get("objects", [])
-        print({obj["id"] for obj in objects})
-        assert {obj["id"] for obj in objects} == set(expected_ids)
+        

@@ -2,6 +2,7 @@
 Views for the Cyber Threat Exchange server.
 """
 
+from collections import defaultdict
 import hashlib
 import itertools
 import logging
@@ -297,6 +298,16 @@ class FeedView(viewsets.ModelViewSet):
         ),
         parameters=[
             OpenApiParameter(
+                "added_after",
+                description="Only return objects modified after this timestamp. Use ISO8601 format.",
+                type=OpenApiTypes.STR,
+            ),
+            OpenApiParameter(
+                "limit",
+                description="Maximum number of returned objects. The server clamps this to a hard max.",
+                type=OpenApiTypes.INT,
+            ),
+            OpenApiParameter(
                 "types",
                 description="Only show objects of selected types",
                 enum=ALL_SEARCH_TYPES,
@@ -310,7 +321,7 @@ class FeedView(viewsets.ModelViewSet):
                 type=OpenApiTypes.BOOL,
             ),
         ],
-        responses=serializers.StixObjectsPlaceholderSerializer(many=True),
+        responses=serializers.BundleObjects(),
     ),
     retrieve=extend_schema(
         summary="Retrieve an object from a feed",
@@ -417,7 +428,7 @@ class FeedObjectsView(viewsets.GenericViewSet):
     def list(self, request, feed_id=None):
         feed = get_object_or_404(models.Feed, id=feed_id)
         helper = ArangoDBHelper(feed.vertex_collection, request)
-        return helper.semantic_search([feed.collection_name])
+        return helper.get_objects(feed)
 
     def retrieve(self, request, object_id, feed_id=None):
         feed = get_object_or_404(models.Feed, id=feed_id)
@@ -437,7 +448,7 @@ class FeedObjectsView(viewsets.GenericViewSet):
     def bundle(self, request, object_id, feed_id=None):
         feed = get_object_or_404(models.Feed, id=feed_id)
         helper = ArangoDBHelper(feed.vertex_collection, request)
-        return helper.get_bundle2(object_id, feed)
+        return helper.get_bundle(object_id, feed)
 
 
 @extend_schema_view(
@@ -568,7 +579,7 @@ class SearchView(mixins.ListModelMixin, viewsets.GenericViewSet):
         ctx = super().get_serializer_context()
         ctx.update(
             objects=ArangoDBHelper(
-                "semantic_search", self.request
+                "", self.request
             ).get_context_for_objects(self.object_ids)
         )
         return ctx
@@ -579,7 +590,9 @@ class SearchView(mixins.ListModelMixin, viewsets.GenericViewSet):
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
         page = self.paginate_queryset(queryset)
-        self.object_ids = [obj.stix_id for obj in page]
+        self.object_ids = {}
+        for obj in page:
+            self.object_ids[obj.stix_id] = str(obj.feed_id).replace('-', '')
         self.serializer_class = values_serializers.ValuesAsStixSerializer
         serializer = self.get_serializer(page, many=True)
         return self.get_paginated_response(serializer.data)

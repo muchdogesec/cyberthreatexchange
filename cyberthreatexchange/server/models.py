@@ -121,6 +121,7 @@ def create_collection(feed: Feed):
         )
     )
     create_index_on_collection(feed.edge_collection)
+    create_index_on_collection(feed.vertex_collection)
     link_collections_task()
 
 

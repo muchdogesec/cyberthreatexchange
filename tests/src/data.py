@@ -67,6 +67,7 @@ network_indicator = {
     "type": "indicator",
     "spec_version": "2.1",
     "id": "indicator--8e2e2d2b-17d4-4cbf-938f-98ee46b3cd3f",
+    "created_by_ref": "identity--c78cb6e5-0c4b-4611-8297-d1b8b55e40b5",
     "created": "2020-01-15T10:00:00.000Z",
     "modified": "2020-01-15T10:00:00.000Z",
     "name": "Cobalt Strike C2 Domain",
@@ -120,6 +121,7 @@ cve_exploit = {
     "type": "vulnerability",
     "spec_version": "2.1",
     "id": "vulnerability--7d0e5d5e-2b5c-4c5e-8e5e-5e5e5e5e5e5e",
+    "created_by_ref": "identity--c78cb6e5-0c4b-4611-8297-d1b8b55e40b5",
     "created": "2020-01-15T10:00:00.000Z",
     "modified": "2020-01-15T10:00:00.000Z",
     "name": "CVE-2020-0601",
@@ -130,7 +132,7 @@ cve_exploit = {
             "external_id": "CVE-2020-0601",
             "url": "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-0601"
         }
-    ]
+    ],
 }
 
 # Observed Data object
