@@ -23,7 +23,7 @@ from cryptography.fernet import Fernet
 import base64
 from django.core.exceptions import ImproperlyConfigured
 from cyberthreatexchange.server.values import filters as value_filters
-from cyberthreatexchange.worker.populate_dbs import setup_arangodb
+from cyberthreatexchange.worker.populate_dbs import create_index_on_collection, setup_arangodb
 
 
 if typing.TYPE_CHECKING:
@@ -111,6 +111,7 @@ def create_collection(feed: Feed):
         host_url=settings.ARANGODB_HOST_URL,
         create_collection=True,
         versioning_mode='versionless',
+        skip_default_indexes=True,
     )
     s2a.run(
         data=dict(
@@ -119,7 +120,10 @@ def create_collection(feed: Feed):
             objects=[feed.identity.dict],
         )
     )
+    create_index_on_collection(feed.edge_collection)
+    create_index_on_collection(feed.vertex_collection)
     link_collections_task()
+
 
 def link_collections_task():
     from cyberthreatexchange.worker.tasks import link_collections
@@ -146,7 +150,7 @@ def update_identities(feed: Feed):
     from django.http.request import HttpRequest
     from rest_framework.request import Request
 
-    helper = ArangoDBHelper(settings.VIEW_NAME, Request(HttpRequest()))
+    helper = ArangoDBHelper('', Request(HttpRequest()))
     try:
         updated_keys = helper.execute_query(query, bind_vars=binds, paginate=False)
         logging.info(f"updated {len(updated_keys)} identities for {feed.id}")

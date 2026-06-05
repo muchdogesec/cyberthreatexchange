@@ -6,7 +6,7 @@ from arango import AsyncJobResultError
 
 from cyberthreatexchange.server import models
 from cyberthreatexchange.worker import populate_dbs
-from cyberthreatexchange.worker.populate_dbs import setup_semantic_search_view
+from cyberthreatexchange.worker.populate_dbs import setup_joined_view
 
 from django.conf import settings
 from arango.client import ArangoClient
@@ -155,7 +155,7 @@ def test_ov__values(feeds_with_object_values, monkeypatch):
 def test_create_feed__runs_setup_db(identity, monkeypatch, celery_always_eager):
     used_async = {}
     def setup_view__await_result(*args, **kwargs):
-        result = setup_semantic_search_view(*args, **kwargs)
+        result = setup_joined_view(*args, **kwargs)
         if hasattr(result, 'result'):
             used_async['called'] = True
             for i in range(50):  # wait up to 5 seconds for the view setup to complete
@@ -167,8 +167,8 @@ def test_create_feed__runs_setup_db(identity, monkeypatch, celery_always_eager):
                     continue
         return result
     
-    populate_dbs.setup_semantic_search_view(sync=True) # Ensure view exists before test (since we're testing if view is updated correctly after a new feed is created, we want to make sure the view is created before the feed creation triggers an update)
-    with patch('cyberthreatexchange.worker.populate_dbs.setup_semantic_search_view', side_effect=setup_view__await_result) as mock_setup_db:
+    populate_dbs.setup_joined_view(sync=True) # Ensure view exists before test (since we're testing if view is updated correctly after a new feed is created, we want to make sure the view is created before the feed creation triggers an update)
+    with patch('cyberthreatexchange.worker.populate_dbs.setup_joined_view', side_effect=setup_view__await_result) as mock_setup_db:
         feed = models.Feed.objects.create(
             name="Test Feed",
             description="A test feed for unit tests",
@@ -177,7 +177,7 @@ def test_create_feed__runs_setup_db(identity, monkeypatch, celery_always_eager):
             id=uuid.uuid4(),
         )
     mock_setup_db.assert_called_once_with(sync=False)
-    assert used_async, "Expected setup_semantic_search_view to be called with sync=False, but it seems it was not awaited properly"
+    assert used_async, "Expected setup_joined_view to be called with sync=False, but it seems it was not awaited properly"
     client = ArangoClient(settings.ARANGODB_HOST_URL)
     db = client.db(
         settings.ARANGODB_DATABASE + "_database",
@@ -185,6 +185,6 @@ def test_create_feed__runs_setup_db(identity, monkeypatch, celery_always_eager):
         settings.ARANGODB_PASSWORD,
         verify=True,
     )
-    view_properties = db.view(settings.SEMANTIC_VIEW_NAME)
+    view_properties = db.view(settings.JOINED_VIEW_NAME)
     assert feed.vertex_collection in view_properties['links']
     assert feed.edge_collection in view_properties['links']
