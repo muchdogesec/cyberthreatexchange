@@ -1,4 +1,23 @@
+import time
+import typing
+from unittest.mock import patch
+
+from arango import AsyncJobResultError
+
 from cyberthreatexchange.server import models
+from cyberthreatexchange.worker import populate_dbs
+from cyberthreatexchange.worker.populate_dbs import setup_joined_view
+
+from django.conf import settings
+from arango.client import ArangoClient
+import pytest
+import uuid
+import random
+from datetime import UTC, timedelta, datetime
+from django.utils import timezone
+
+if typing.TYPE_CHECKING:
+    from cyberthreatexchange import settings
 
 
 def test_create_feed_uses_name_based_uuid(identity):
@@ -33,12 +52,6 @@ def test_create_feed_uses_name_based_uuid(identity):
     # "My basic feed+identity--9779a2db-f98c-5f4b-8d08-8ee04e02dbb5"
     assert str(feed3.id) == "2902eb6f-aa38-5e50-b56d-c85ebfb1e377"
 
-
-import pytest
-import uuid
-import random
-from datetime import UTC, timedelta, datetime
-from django.utils import timezone
 
 
 
@@ -133,8 +146,45 @@ def test_ov__values(feeds_with_object_values, monkeypatch):
 
     assert models.NewObjectValue.objects.filter(is_dupe=False).count() == len(set(feeds_with_object_values["stix_ids"]))
     assert models.NewObjectValue.objects.filter(is_dupe=True, feed_id=feed_to_remove.id).count() == 0
-    monkeypatch.setenv('DEBUG_SQL', '2')
     feed_to_remove.delete()
     assert models.NewObjectValue.objects.count() == 10
     assert models.NewObjectValue.objects.filter(is_dupe=False).count() == 5
     assert models.NewObjectValue.objects.filter(is_dupe=True).count() == 5
+
+@pytest.mark.django_db
+def test_create_feed__runs_setup_db(identity, monkeypatch, celery_always_eager):
+    used_async = {}
+    def setup_view__await_result(*args, **kwargs):
+        result = setup_joined_view(*args, **kwargs)
+        if hasattr(result, 'result'):
+            used_async['called'] = True
+            for i in range(50):  # wait up to 5 seconds for the view setup to complete
+                try:
+                    result = result.result()
+                    break
+                except AsyncJobResultError as e:
+                    time.sleep(0.1)  # small sleep to prevent tight loop
+                    continue
+        return result
+    
+    populate_dbs.setup_joined_view(sync=True) # Ensure view exists before test (since we're testing if view is updated correctly after a new feed is created, we want to make sure the view is created before the feed creation triggers an update)
+    with patch('cyberthreatexchange.worker.populate_dbs.setup_joined_view', side_effect=setup_view__await_result) as mock_setup_db:
+        feed = models.Feed.objects.create(
+            name="Test Feed",
+            description="A test feed for unit tests",
+            identity=identity,
+            tags=["test", "sample"],
+            id=uuid.uuid4(),
+        )
+    mock_setup_db.assert_called_once_with(sync=False)
+    assert used_async, "Expected setup_joined_view to be called with sync=False, but it seems it was not awaited properly"
+    client = ArangoClient(settings.ARANGODB_HOST_URL)
+    db = client.db(
+        settings.ARANGODB_DATABASE + "_database",
+        settings.ARANGODB_USERNAME,
+        settings.ARANGODB_PASSWORD,
+        verify=True,
+    )
+    view_properties = db.view(settings.JOINED_VIEW_NAME)
+    assert feed.vertex_collection in view_properties['links']
+    assert feed.edge_collection in view_properties['links']

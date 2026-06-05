@@ -2,6 +2,7 @@
 Views for the Cyber Threat Exchange server.
 """
 
+from collections import defaultdict
 import hashlib
 import itertools
 import logging
@@ -297,6 +298,16 @@ class FeedView(viewsets.ModelViewSet):
         ),
         parameters=[
             OpenApiParameter(
+                "added_after",
+                description="Only return objects modified after this timestamp. Use ISO8601 format.",
+                type=OpenApiTypes.STR,
+            ),
+            OpenApiParameter(
+                "limit",
+                description="Maximum number of returned objects. The server clamps this to a hard max.",
+                type=OpenApiTypes.INT,
+            ),
+            OpenApiParameter(
                 "types",
                 description="Only show objects of selected types",
                 enum=ALL_SEARCH_TYPES,
@@ -310,7 +321,7 @@ class FeedView(viewsets.ModelViewSet):
                 type=OpenApiTypes.BOOL,
             ),
         ],
-        responses=serializers.StixObjectsPlaceholderSerializer(many=True),
+        responses=serializers.BundleObjects(),
     ),
     retrieve=extend_schema(
         summary="Retrieve an object from a feed",
@@ -332,47 +343,54 @@ class FeedView(viewsets.ModelViewSet):
         ),
         responses={204: None},
     ),
-    versions=extend_schema(
-        summary="Get object versions from a feed",
-        description=textwrap.dedent(
-            """
-            Returns a list of all versions of the object in the database. You can then use the version returned on the GET objects endpoint to see the content for that version of the object.
-            """
-        ),
-        responses=serializers.StixVersionsSerializer(),
-    ),
     bundle=extend_schema(
         summary="Get bundle of related objects from a feed",
         description=textwrap.dedent(
             """
-            Get all objects directly related to the specified object within the feed.
+            Get a relationship bundle around the requested object.
+
+            The response returns object IDs plus an opaque cursor token that can be sent back to continue scanning the bundle on the next request.
             """
         ),
         parameters=[
             OpenApiParameter(
-                "show_embedded_refs",
-                description=textwrap.dedent(
-                    """
-                    If set to `false` (default), the response will only include the directly requested object, and will not include any embedded SROs that link it to other objects. If set to `true`, the response will include all directly related objects, and will represent the relationships between them using STIX embedded relationships.
-                    """
-                ),
-                type=OpenApiTypes.BOOL,
-            ),
-            OpenApiParameter(
                 "types",
-                description="Only show objects of selected types",
+                description="Only include direct relationships whose related objects are in this STIX type list.",
                 enum=ALL_SEARCH_TYPES,
                 explode=False,
                 style="form",
                 many=True,
             ),
             OpenApiParameter(
-                "show_embedded_sros",
-                type=OpenApiTypes.BOOL,
-                description="set to `true` to include the embedded relationships linking the objects. Setting to `false` (default) will still return the target object, but wont return the embedded SRO linking them. Set to `true` if your downstream software CANNOT interpret STIX embedded relationships",
+                "secondary_types",
+                description="Only include secondary relationships whose related objects are in this STIX type list. Defaults to `types` when omitted.",
+                enum=ALL_SEARCH_TYPES,
+                explode=False,
+                style="form",
+                many=True,
             ),
+            OpenApiParameter(
+                "secondary_relations",
+                description="Set to `true` to include related objects reachable via secondary relationships.",
+                type=OpenApiTypes.BOOL,
+            ),
+            OpenApiParameter(
+                'limit',
+                description='Maximum number of returned object IDs to include in a page. The server clamps this to a hard max of 100.',
+                type=OpenApiTypes.INT,
+            ),
+            OpenApiParameter(
+                'cursor',
+                description="Opaque base64 cursor returned by the previous page.",
+                type=OpenApiTypes.STR,
+            ),
+            OpenApiParameter(
+                'show_embedded_refs',
+                description="If set to false (default), the response will only include the directly requested object, and will not include any embedded SROs that link it to other objects. If set to true, the response will include all directly related objects, and will represent the relationships between them using STIX embedded relationships..",
+                type=OpenApiTypes.BOOL,
+            )
         ],
-        responses=serializers.StixObjectsPlaceholderSerializer(many=True),
+        responses=serializers.BundleObjects(),
         filters=False,
     ),
 )
@@ -410,7 +428,7 @@ class FeedObjectsView(viewsets.GenericViewSet):
     def list(self, request, feed_id=None):
         feed = get_object_or_404(models.Feed, id=feed_id)
         helper = ArangoDBHelper(feed.vertex_collection, request)
-        return helper.semantic_search([feed.collection_name])
+        return helper.get_objects(feed)
 
     def retrieve(self, request, object_id, feed_id=None):
         feed = get_object_or_404(models.Feed, id=feed_id)
@@ -427,16 +445,10 @@ class FeedObjectsView(viewsets.GenericViewSet):
         )
 
     @decorators.action(detail=True, methods=["GET"])
-    def versions(self, request, object_id, feed_id=None):
-        feed = get_object_or_404(models.Feed, id=feed_id)
-        helper = ArangoDBHelper(feed.vertex_collection, request)
-        return helper.get_versions(object_id)
-
-    @decorators.action(detail=True, methods=["GET"])
     def bundle(self, request, object_id, feed_id=None):
         feed = get_object_or_404(models.Feed, id=feed_id)
         helper = ArangoDBHelper(feed.vertex_collection, request)
-        return helper.get_object_by_external_id(object_id, bundle=True)
+        return helper.get_bundle(object_id, feed)
 
 
 @extend_schema_view(
@@ -540,14 +552,14 @@ class SearchView(mixins.ListModelMixin, viewsets.GenericViewSet):
                 return queryset
             queryset = queryset.filter(
                 Q(feed_id__in=value)
-                | Q(
-                    Exists(
-                        models.NewObjectValue.objects.filter(
-                            feed_id__in=value,
-                            stix_id=OuterRef("stix_id"),
-                        )
-                    )
-                ),
+                # | Q(
+                #     Exists(
+                #         models.NewObjectValue.objects.filter(
+                #             feed_id__in=value,
+                #             stix_id=OuterRef("stix_id"),
+                #         )
+                #     )
+                # ),
             )
             return queryset
 
@@ -567,7 +579,7 @@ class SearchView(mixins.ListModelMixin, viewsets.GenericViewSet):
         ctx = super().get_serializer_context()
         ctx.update(
             objects=ArangoDBHelper(
-                "semantic_search", self.request
+                "", self.request
             ).get_context_for_objects(self.object_ids)
         )
         return ctx
@@ -578,7 +590,9 @@ class SearchView(mixins.ListModelMixin, viewsets.GenericViewSet):
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
         page = self.paginate_queryset(queryset)
-        self.object_ids = [obj.stix_id for obj in page]
+        self.object_ids = {}
+        for obj in page:
+            self.object_ids[obj.stix_id] = str(obj.feed_id).replace('-', '')
         self.serializer_class = values_serializers.ValuesAsStixSerializer
         serializer = self.get_serializer(page, many=True)
         return self.get_paginated_response(serializer.data)
