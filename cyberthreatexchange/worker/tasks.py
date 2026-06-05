@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 import shutil
 from urllib.parse import urljoin
+import uuid
 
 import requests
 
@@ -17,6 +18,7 @@ from django.conf import settings
 from dateutil.parser import parse as parse_datetime
 from cyberthreatexchange.server.values.values import save_object_values
 
+from cyberthreatexchange.worker.populate_dbs import setup_arangodb
 from cyberthreatexchange.worker.utils import md5_hash
 from .celery import app
 from stix2arango.stix2arango import Stix2Arango
@@ -79,9 +81,12 @@ def get_existing_object_pks(feed, object_ids):
     result = helper.execute_query(query, bind_vars=bind_vars, paginate=False)
     return result
 
+@app.task
+def link_collections():
+    setup_arangodb(sync=False)
+
 
 def make_uploads(job_id, objects, warnings=None, arango_extra=None):
-
     job = Job.objects.get(pk=job_id)
     feed = job.feed
     s2a = Stix2Arango(
@@ -93,8 +98,9 @@ def make_uploads(job_id, objects, warnings=None, arango_extra=None):
         password=settings.ARANGODB_PASSWORD,
         create_db=False,
         create_collection=False,
+        versioning_mode='versionless',
     )
-    bundle = job.payload.copy()
+    bundle_id = job.payload.get('id', 'bundle--'+str(uuid.uuid4()))
     objects_to_process = []
     warnings = warnings or {}
     relationship_refs = set()
@@ -116,7 +122,7 @@ def make_uploads(job_id, objects, warnings=None, arango_extra=None):
     s2a.run(
         data=dict(
             type="bundle",
-            id=bundle.get("id", f"bundle--{job.id}"),
+            id=bundle_id,
             objects=objects_to_process,
         )
     )

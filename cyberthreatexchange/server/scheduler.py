@@ -37,6 +37,19 @@ def purge_old_job_data():
     )
     if updated:
         logger.info("purge_old_job_data: cleared payload/warnings on %d job(s)", updated)
+    purge_jobs()
+
+
+def purge_jobs():
+    """
+    remove jobs older than 30 days
+    """
+    from cyberthreatexchange.server.models import Job
+    cutoff = timezone.now() - timedelta(days=30)
+    deleted = Job.objects.filter(completion_time__lt=cutoff).delete()
+    if deleted:
+        logger.info("purge_jobs: cleared %d jobs", deleted)
+
 
 
 def start():

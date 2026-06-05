@@ -2,6 +2,7 @@
 Views for the Cyber Threat Exchange server.
 """
 
+from collections import defaultdict
 import hashlib
 import itertools
 import logging
@@ -12,16 +13,6 @@ import cyberthreatexchange.server.values.serializers as values_serializers
 from cyberthreatexchange.server.values.values import ALL_KNOWLEDGEBASES, type_value_map
 from cyberthreatexchange.worker.utils import md5_hash
 
-SEMANTIC_SEARCH_SORT_FIELDS = [
-    "modified_descending",
-    "modified_ascending",
-    "created_ascending",
-    "created_descending",
-    "name_ascending",
-    "name_descending",
-    "type_ascending",
-    "type_descending",
-]
 
 from django_filters.rest_framework import (
     BaseCSVFilter,
@@ -48,6 +39,7 @@ from django.shortcuts import get_object_or_404, get_list_or_404
 from cyberthreatexchange.server import models, serializers
 from cyberthreatexchange.server.arango_helpers import ALL_SEARCH_TYPES, ArangoDBHelper
 from cyberthreatexchange.server.utils import Ordering, Pagination
+from dogesec_commons.utils.pagination import CompositeCursorPagination
 from drf_spectacular.views import SpectacularAPIView
 from cyberthreatexchange.worker.tasks import upload_bundle_task
 from dogesec_commons.utils.schemas import DEFAULT_400_RESPONSE, DEFAULT_404_RESPONSE
@@ -306,6 +298,16 @@ class FeedView(viewsets.ModelViewSet):
         ),
         parameters=[
             OpenApiParameter(
+                "added_after",
+                description="Only return objects modified after this timestamp. Use ISO8601 format.",
+                type=OpenApiTypes.STR,
+            ),
+            OpenApiParameter(
+                "limit",
+                description="Maximum number of returned objects. The server clamps this to a hard max.",
+                type=OpenApiTypes.INT,
+            ),
+            OpenApiParameter(
                 "types",
                 description="Only show objects of selected types",
                 enum=ALL_SEARCH_TYPES,
@@ -319,103 +321,7 @@ class FeedView(viewsets.ModelViewSet):
                 type=OpenApiTypes.BOOL,
             ),
         ],
-        responses=serializers.StixObjectsPlaceholderSerializer(many=True),
-    ),
-    sdos=extend_schema(
-        summary="List SDOs in a feed",
-        description=textwrap.dedent(
-            """
-            Search and filter on SDO objects in a feed.
-            """
-        ),
-        parameters=[
-            OpenApiParameter(
-                "types",
-                description="Only show objects of selected types",
-                enum=SDO_TYPES,
-                explode=False,
-                style="form",
-                many=True,
-            ),
-            OpenApiParameter(
-                "name",
-                description="Filter the results by the name of the domain object",
-                type=OpenApiTypes.STR,
-            ),
-            OpenApiParameter(
-                "text",
-                description="Filter the results by the `name` and `description` property of the object.",
-                type=OpenApiTypes.STR,
-            ),
-        ],
-        responses=serializers.StixObjectsPlaceholderSerializer(many=True),
-    ),
-    smos=extend_schema(
-        summary="List SMOs in a feed",
-        description=textwrap.dedent(
-            """
-            Search and filter on SMO objects in a feed.
-            """
-        ),
-        parameters=[
-            OpenApiParameter(
-                "types",
-                description="Only show objects of selected types",
-                enum=SMO_TYPES,
-                explode=False,
-                style="form",
-                many=True,
-            ),
-            # OpenApiParameter(
-            #     "text",
-            #     description="Filter the results by the `name` and `description` property of the object.",
-            #     type=OpenApiTypes.STR,
-            # ),
-        ],
-        responses=serializers.StixObjectsPlaceholderSerializer(many=True),
-    ),
-    scos=extend_schema(
-        summary="List SCOs in a feed",
-        description=textwrap.dedent(
-            """
-            Search and filter on SCO objects in a feed.
-            """
-        ),
-        parameters=[
-            OpenApiParameter(
-                "types",
-                description="Only show objects of selected types",
-                enum=SCO_TYPES,
-                explode=False,
-                style="form",
-                many=True,
-            ),
-            OpenApiParameter(
-                "value",
-                description="Filter the results by the observed value",
-                type=OpenApiTypes.STR,
-            ),
-        ],
-        responses=serializers.StixObjectsPlaceholderSerializer(many=True),
-    ),
-    sros=extend_schema(
-        summary="List SROs in a feed",
-        description=textwrap.dedent(
-            """
-            Search and filter on SRO objects in a feed.
-            """
-        ),
-        parameters=[
-            OpenApiParameter(
-                "types",
-                description="Only show objects of selected types",
-                enum=["relationship", "sighting"],
-                explode=False,
-                style="form",
-                many=True,
-            ),
-        ],
-        responses=serializers.StixObjectsPlaceholderSerializer(many=True),
+        responses=serializers.BundleObjects(),
     ),
     retrieve=extend_schema(
         summary="Retrieve an object from a feed",
@@ -437,47 +343,54 @@ class FeedView(viewsets.ModelViewSet):
         ),
         responses={204: None},
     ),
-    versions=extend_schema(
-        summary="Get object versions from a feed",
-        description=textwrap.dedent(
-            """
-            Returns a list of all versions of the object in the database. You can then use the version returned on the GET objects endpoint to see the content for that version of the object.
-            """
-        ),
-        responses=serializers.StixVersionsSerializer(),
-    ),
     bundle=extend_schema(
         summary="Get bundle of related objects from a feed",
         description=textwrap.dedent(
             """
-            Get all objects directly related to the specified object within the feed.
+            Get a relationship bundle around the requested object.
+
+            The response returns object IDs plus an opaque cursor token that can be sent back to continue scanning the bundle on the next request.
             """
         ),
         parameters=[
             OpenApiParameter(
-                "show_embedded_refs",
-                description=textwrap.dedent(
-                    """
-                    If set to `false` (default), the response will only include the directly requested object, and will not include any embedded SROs that link it to other objects. If set to `true`, the response will include all directly related objects, and will represent the relationships between them using STIX embedded relationships.
-                    """
-                ),
-                type=OpenApiTypes.BOOL,
-            ),
-            OpenApiParameter(
                 "types",
-                description="Only show objects of selected types",
+                description="Only include direct relationships whose related objects are in this STIX type list.",
                 enum=ALL_SEARCH_TYPES,
                 explode=False,
                 style="form",
                 many=True,
             ),
             OpenApiParameter(
-                "show_embedded_sros",
-                type=OpenApiTypes.BOOL,
-                description="set to `true` to include the embedded relationships linking the objects. Setting to `false` (default) will still return the target object, but wont return the embedded SRO linking them. Set to `true` if your downstream software CANNOT interpret STIX embedded relationships",
+                "secondary_types",
+                description="Only include secondary relationships whose related objects are in this STIX type list. Defaults to `types` when omitted.",
+                enum=ALL_SEARCH_TYPES,
+                explode=False,
+                style="form",
+                many=True,
             ),
+            OpenApiParameter(
+                "secondary_relations",
+                description="Set to `true` to include related objects reachable via secondary relationships.",
+                type=OpenApiTypes.BOOL,
+            ),
+            OpenApiParameter(
+                'limit',
+                description='Maximum number of returned object IDs to include in a page. The server clamps this to a hard max of 100.',
+                type=OpenApiTypes.INT,
+            ),
+            OpenApiParameter(
+                'cursor',
+                description="Opaque base64 cursor returned by the previous page.",
+                type=OpenApiTypes.STR,
+            ),
+            OpenApiParameter(
+                'show_embedded_refs',
+                description="If set to false (default), the response will only include the directly requested object, and will not include any embedded SROs that link it to other objects. If set to true, the response will include all directly related objects, and will represent the relationships between them using STIX embedded relationships..",
+                type=OpenApiTypes.BOOL,
+            )
         ],
-        responses=serializers.StixObjectsPlaceholderSerializer(many=True),
+        responses=serializers.BundleObjects(),
         filters=False,
     ),
 )
@@ -515,32 +428,7 @@ class FeedObjectsView(viewsets.GenericViewSet):
     def list(self, request, feed_id=None):
         feed = get_object_or_404(models.Feed, id=feed_id)
         helper = ArangoDBHelper(feed.vertex_collection, request)
-        return helper.semantic_search([feed.collection_name])
-
-    @decorators.action(detail=False, methods=["GET"])
-    def sdos(self, request, feed_id=None):
-        feed = get_object_or_404(models.Feed, id=feed_id)
-        helper = ArangoDBHelper(feed.vertex_collection, request)
-        return helper.semantic_search([feed.collection_name], valid_types=SDO_TYPES)
-
-    @decorators.action(detail=False, methods=["GET"])
-    def scos(self, request, feed_id=None):
-        feed = get_object_or_404(models.Feed, id=feed_id)
-        helper = ArangoDBHelper(feed.vertex_collection, request)
-        return helper.semantic_search([feed.collection_name], valid_types=SCO_TYPES)
-
-    @decorators.action(detail=False, methods=["GET"])
-    def smos(self, request, feed_id=None):
-        feed = get_object_or_404(models.Feed, id=feed_id)
-        helper = ArangoDBHelper(feed.vertex_collection, request)
-        return helper.semantic_search([feed.collection_name], valid_types=SMO_TYPES)
-
-    @decorators.action(detail=False, methods=["GET"])
-    def sros(self, request, feed_id=None):
-        SRO_TYPES = ["relationship"]
-        feed = get_object_or_404(models.Feed, id=feed_id)
-        helper = ArangoDBHelper(feed.vertex_collection, request)
-        return helper.semantic_search([feed.collection_name], valid_types=SRO_TYPES)
+        return helper.get_objects(feed)
 
     def retrieve(self, request, object_id, feed_id=None):
         feed = get_object_or_404(models.Feed, id=feed_id)
@@ -557,22 +445,16 @@ class FeedObjectsView(viewsets.GenericViewSet):
         )
 
     @decorators.action(detail=True, methods=["GET"])
-    def versions(self, request, object_id, feed_id=None):
-        feed = get_object_or_404(models.Feed, id=feed_id)
-        helper = ArangoDBHelper(feed.vertex_collection, request)
-        return helper.get_versions(object_id)
-
-    @decorators.action(detail=True, methods=["GET"])
     def bundle(self, request, object_id, feed_id=None):
         feed = get_object_or_404(models.Feed, id=feed_id)
         helper = ArangoDBHelper(feed.vertex_collection, request)
-        return helper.get_object_by_external_id(object_id, bundle=True)
+        return helper.get_bundle(object_id, feed)
 
 
 @extend_schema_view(
     list=extend_schema(
         responses={
-            200: serializers.StixObjectsPlaceholderSerializer(many=True),
+            200: serializers.PlaceholderStixObjectSerializer(many=True),
             400: DEFAULT_400_RESPONSE,
         },
         summary="Search for objects",
@@ -602,12 +484,18 @@ class FeedObjectsView(viewsets.GenericViewSet):
     ),
 )
 class SearchView(mixins.ListModelMixin, viewsets.GenericViewSet):
-    serializer_class = serializers.StixObjectsPlaceholderSerializer(many=True)
-    serializer_class = values_serializers.ValuesSerializer
-    pagination_class = Pagination("objects")
+    pagination_class = CompositeCursorPagination("objects")
     openapi_tags = ["Search"]
     filter_backends = [DjangoFilterBackend, Ordering]
-    ordering_fields = ["created", "modified", "value"]
+    ordering_fields = {
+        "created_ascending": ["created", "id"],
+        "created_descending": ["-created", "-id"],
+        "modified_ascending": ["modified", "id"],
+        "modified_descending": ["-modified", "-id"],
+        "value_ascending": "values_sort",
+        "value_descending": "-values_sort",
+    }
+    ordering = "modified_descending"
     lookup_url_kwarg = "object_id"
     lookup_field = "stix_id"
 
@@ -631,10 +519,12 @@ class SearchView(mixins.ListModelMixin, viewsets.GenericViewSet):
             lookup_expr="in",
             field_name="feed_id",
             help_text="Filter results by containing feed_ids you want to search.",
+            method='filter_feeds',
         )
         author_ids = BaseCSVFilter(
             lookup_expr="in",
             field_name="feed__identity_id",
+            method='filter_authors',
             help_text="Filter results by containing the identity_id of the feed's author.",
         )
         knowledgebases = ChoiceCSVFilter(
@@ -656,18 +546,40 @@ class SearchView(mixins.ListModelMixin, viewsets.GenericViewSet):
         def filter_noop(self, queryset, name, value):
             return queryset
 
-    def get_queryset(self):
-        from django.db.models import F
+        def filter_feeds(self, queryset, name, value):
+            from django.db.models import Exists, OuterRef, functions, Value, Q, Subquery
+            if not value:
+                return queryset
+            queryset = queryset.filter(
+                Q(feed_id__in=value)
+                # | Q(
+                #     Exists(
+                #         models.NewObjectValue.objects.filter(
+                #             feed_id__in=value,
+                #             stix_id=OuterRef("stix_id"),
+                #         )
+                #     )
+                # ),
+            )
+            return queryset
 
+        def filter_authors(self, queryset, name, value):
+            if not value:
+                return queryset
+            feed_ids = list(models.Feed.objects.filter(identity_id__in=value).values_list(
+                "id", flat=True
+            ))
+            return self.filter_feeds(queryset, name, feed_ids)
+
+    def get_queryset(self):
         qs = models.NewObjectValue.objects.filter(is_dupe=False)
-        qs = qs.alias(value=F("values_sort"))
         return qs
 
     def get_serializer_context(self):
         ctx = super().get_serializer_context()
         ctx.update(
             objects=ArangoDBHelper(
-                "semantic_search", self.request
+                "", self.request
             ).get_context_for_objects(self.object_ids)
         )
         return ctx
@@ -678,7 +590,9 @@ class SearchView(mixins.ListModelMixin, viewsets.GenericViewSet):
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
         page = self.paginate_queryset(queryset)
-        self.object_ids = [obj.stix_id for obj in page]
+        self.object_ids = {}
+        for obj in page:
+            self.object_ids[obj.stix_id] = str(obj.feed_id).replace('-', '')
         self.serializer_class = values_serializers.ValuesAsStixSerializer
         serializer = self.get_serializer(page, many=True)
         return self.get_paginated_response(serializer.data)

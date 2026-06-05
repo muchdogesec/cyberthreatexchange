@@ -48,7 +48,6 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'dogesec_commons.objects',
     'drf_spectacular',
     'django.contrib.postgres',
     'dogesec_commons.identity',
@@ -186,12 +185,11 @@ SPECTACULAR_SETTINGS: dict[str, Any] = {
     ]
 }
 
-VIEW_NAME = "cyberthreatexchange_view"
+JOINED_VIEW_NAME = "joined_view"
 ARANGODB_USERNAME   = os.getenv('ARANGODB_USERNAME')
 ARANGODB_PASSWORD   = os.getenv('ARANGODB_PASSWORD')
 ARANGODB_HOST_URL   = os.getenv("ARANGODB_HOST_URL")
 ARANGODB_DATABASE   = "cyberthreatexchange"
 
 # stixifier settings
-ARANGODB_DATABASE_VIEW = VIEW_NAME
 SRO_OBJECTS_ONLY_LATEST = os.getenv('SRO_OBJECTS_ONLY_LATEST', True)
