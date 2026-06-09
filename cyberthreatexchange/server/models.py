@@ -221,12 +221,12 @@ class NewObjectValue(models.Model):
             models.Index(fields=['feed', 'stix_id'], condition=models.Q(is_dupe=False), name='ctx_deduplicator_idx'),
             models.Index(fields=['feed', 'stix_id'], name='ctx_nov_feed_stix_idx'),
             models.Index(fields=['type', 'stix_id'], name='ctx_nov_type_stix_idx', condition=models.Q(is_dupe=False)),
-            models.Index(fields=['created', 'id', 'type', 'feed_id'], name='ctx_nov_created_type_idx', condition=models.Q(is_dupe=False)),
-            models.Index(fields=['modified', 'id', 'type', 'feed_id'], name='ctx_nov_modified_type_idx', condition=models.Q(is_dupe=False)),
-            models.Index(fields=['values_sort', 'type', 'feed_id'], name='ctx_nov_values_sort_type_idx', condition=models.Q(is_dupe=False)),
-            models.Index(fields=['created', 'id', 'knowledgebase', 'feed_id'], name='ctx_nov_created_kb_idx', condition=models.Q(is_dupe=False)),
-            models.Index(fields=['modified', 'id', 'knowledgebase', 'feed_id'], name='ctx_nov_modified_kb_idx', condition=models.Q(is_dupe=False)),
-            models.Index(fields=['values_sort', 'knowledgebase', 'feed_id'], name='ctx_nov_values_sort_kb_idx', condition=models.Q(is_dupe=False)),
+            models.Index(fields=['type', 'feed_id', '-created', '-id'], name='ctx_nov_created_type_idx', condition=models.Q(is_dupe=False)),
+            models.Index(fields=['type', 'feed_id', '-modified', '-id',], name='ctx_nov_modified_type_idx', condition=models.Q(is_dupe=False)),
+            models.Index(fields=['type', 'feed_id', 'values_sort'], name='ctx_nov_values_sort_type_idx', condition=models.Q(is_dupe=False)),
+            models.Index(fields=['knowledgebase', 'feed_id', '-created', '-id'], name='ctx_nov_created_kb_idx', condition=models.Q(is_dupe=False)),
+            models.Index(fields=['knowledgebase', 'feed_id', '-modified', '-id'], name='ctx_nov_modified_kb_idx', condition=models.Q(is_dupe=False)),
+            models.Index(fields=['knowledgebase', 'feed_id', 'values_sort'], name='ctx_nov_values_sort_kb_idx', condition=models.Q(is_dupe=False)),
         ]
 
     def __str__(self):
