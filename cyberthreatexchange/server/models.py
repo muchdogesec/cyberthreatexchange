@@ -227,6 +227,11 @@ class NewObjectValue(models.Model):
             models.Index(fields=['created', 'id', 'knowledgebase', 'feed_id'], name='ctx_nov_created_kb_idx', condition=models.Q(is_dupe=False)),
             models.Index(fields=['modified', 'id', 'knowledgebase', 'feed_id'], name='ctx_nov_modified_kb_idx', condition=models.Q(is_dupe=False)),
             models.Index(fields=['values_sort', 'knowledgebase', 'feed_id'], name='ctx_nov_values_sort_kb_idx', condition=models.Q(is_dupe=False)),
+            # other order (for cursorless)
+            models.Index(fields=['type', 'modified', 'id', 'feed_id'], name='ctx_nov_modified_t_last_idx', condition=models.Q(is_dupe=False)),
+            models.Index(fields=['type', 'created', 'id', 'feed_id'], name='ctx_nov_created_t_last_idx', condition=models.Q(is_dupe=False)),
+            models.Index(fields=['knowledgebase', 'modified', 'id', 'feed_id'], name='ctx_nov_kb_m_last_idx', condition=models.Q(is_dupe=False)),
+            models.Index(fields=['knowledgebase', 'created', 'id', 'feed_id'], name='ctx_nov_kb_c_last_idx', condition=models.Q(is_dupe=False)),
         ]
 
     def __str__(self):
