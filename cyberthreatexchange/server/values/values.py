@@ -107,11 +107,22 @@ def get_values(obj: dict, value_keys: list[str] | dict[str, str] | Callable):
     if isinstance(value_keys, list):
         value_keys = {key: key for key in value_keys}
     if isinstance(value_keys, dict):
-        return {key: str(obj[key]) for key in value_keys.keys() if key in obj}
+        retval = []
+        for value_key, obj_key in value_keys.items():
+            retval.extend(expand_value(value_key, obj[obj_key]))
+        return dict(retval)
     elif callable(value_keys):
         return value_keys(obj)
     else:
         raise ValueError("value_keys must be a list, a dictionary, or a callable")
+    
+def expand_value(k, s):
+    if isinstance(s, list):
+        s = dict(enumerate(s))
+    if isinstance(s, dict):
+        return [(f"{k}.{i}", v) for i, v in s.items()]
+    else:
+        return [(k, str(s))]
 
 
 s2e_sco_map = {
@@ -121,6 +132,7 @@ s2e_sco_map = {
     "payment-card": dict(values=["value", "scheme", "currency"]),
     "phone-number": dict(values=["value", "country", "provider"]),
     "user-agent": dict(values=["value"]),
+    "ai-prompt": dict(values=["value", "models"])
 }
 sco_value_map = {
     # Cyber Observable Objects (SCOs)
