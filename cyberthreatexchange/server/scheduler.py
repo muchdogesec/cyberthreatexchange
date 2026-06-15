@@ -46,9 +46,9 @@ def purge_jobs():
     """
     from cyberthreatexchange.server.models import Job
     cutoff = timezone.now() - timedelta(days=30)
-    deleted = Job.objects.filter(completion_time__lt=cutoff).delete()
+    deleted, details = Job.objects.filter(completion_time__lt=cutoff).delete()
     if deleted:
-        logger.info("purge_jobs: cleared %d jobs", deleted)
+        logger.info("purge_jobs: cleared %d jobs: %s", deleted, str(details))
 
 
 

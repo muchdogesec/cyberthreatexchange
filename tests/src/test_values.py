@@ -19,16 +19,18 @@ from cyberthreatexchange.server.values.values import (
 
 def _to_dict(stix_object):
     dct = json.loads(stix_object.serialize())
-    dct['_id'] = 'collection/'+dct['id']
+    dct["_id"] = "collection/" + dct["id"]
     return dct
-
 
 
 class TestValueHelpers:
     def test_get_file_values_from_real_stix_file(self):
         stix_file = StixFile(
             name="payload.bin",
-            hashes={"MD5": "b026324c6904b2a9cb4b88d6d61c81d1", "SHA-256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"},
+            hashes={
+                "MD5": "b026324c6904b2a9cb4b88d6d61c81d1",
+                "SHA-256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+            },
         )
 
         values = get_file_values(_to_dict(stix_file))
@@ -61,7 +63,7 @@ class TestValueHelpers:
     def test_get_marking_definition_values_from_real_stix_marking(self):
         values = get_marking_definitions_values(_to_dict(TLP_AMBER))
 
-        assert values == {"tlp": "amber", 'name': "TLP:AMBER"}
+        assert values == {"tlp": "amber", "name": "TLP:AMBER"}
 
     def test_get_values_raises_on_invalid_value_keys_type(self):
         with pytest.raises(
@@ -76,7 +78,7 @@ class TestExtractObjectMetadata:
         attack_pattern = AttackPattern(
             id="attack-pattern--11111111-1111-4111-8111-111111111111",
             name="Phishing",
-            aliases=["T1566"],
+            aliases=["T1566", "email-psh"],
             allow_custom=True,
             x_mitre_domains=["enterprise-attack"],
             external_references=[
@@ -88,14 +90,19 @@ class TestExtractObjectMetadata:
 
         metadata = extract_object_metadata(_to_dict(attack_pattern))
 
-        assert metadata["stix_id"] == attack_pattern.id
-        assert metadata["type"] == "attack-pattern"
-        assert metadata["values"]["name"] == "Phishing"
-        assert "T1566" in metadata["values"]["aliases"]
-        assert metadata["knowledgebase"] == "enterprise-attack"
-        assert metadata["values"]["kb_id"] == "T1566"
-        assert "created" in metadata
-        assert "modified" in metadata
+        assert metadata == {
+            "stix_id": "attack-pattern--11111111-1111-4111-8111-111111111111",
+            "type": "attack-pattern",
+            "knowledgebase": "enterprise-attack",
+            "values": {
+                "name": "Phishing",
+                "aliases.0": "T1566",
+                "aliases.1": "email-psh",
+                "kb_id": "T1566",
+            },
+            "modified": "2024-01-01T00:00:00.000Z",
+            "created": "2024-01-01T00:00:00.000Z",
+        }
 
     def test_extract_indicator_metadata_from_real_stix_object(self):
         indicator = Indicator(
@@ -122,9 +129,7 @@ class TestExtractObjectMetadata:
             "type": "weakness",
             "id": "weakness--aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
             "name": "Improper Input Validation",
-            "external_references": [
-                {"source_name": "cwe", "external_id": "CWE-20"}
-            ],
+            "external_references": [{"source_name": "cwe", "external_id": "CWE-20"}],
             "created": "2024-01-01T00:00:00Z",
             "modified": "2024-01-01T00:00:00Z",
         }
@@ -164,8 +169,11 @@ class TestSaveObjectValues:
 
         assert created_count == 2
         assert models.NewObjectValue.objects.filter(feed=feed).count() == 2
-        assert {x.arango_pk for x in models.NewObjectValue.objects.filter(feed=feed)} == {
-            "collection/location--44444444-4444-4444-8444-444444444444", "collection/indicator--33333333-3333-4333-8333-333333333333"
+        assert {
+            x.arango_pk for x in models.NewObjectValue.objects.filter(feed=feed)
+        } == {
+            "collection/location--44444444-4444-4444-8444-444444444444",
+            "collection/indicator--33333333-3333-4333-8333-333333333333",
         }
 
     def test_save_object_values_keeps_latest_modified_for_same_stix_id(self, feed):
@@ -203,7 +211,7 @@ class TestSaveObjectValues:
         assert created_count == 1
         stored = models.NewObjectValue.objects.get(feed=feed, stix_id=stix_id)
         assert stored.values["name"] == "New indicator name"
-        assert stored.arango_pk == 'collection/'+stix_id
+        assert stored.arango_pk == "collection/" + stix_id
 
     def test_save_object_values_persists_knowledgebase_and_kb_id(self, feed):
         attack_pattern = _to_dict(
@@ -230,4 +238,3 @@ class TestSaveObjectValues:
         )
         assert stored.knowledgebase == "enterprise-attack"
         assert stored.values["kb_id"] == "T1110"
-
