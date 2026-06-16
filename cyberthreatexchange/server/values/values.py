@@ -109,7 +109,7 @@ def get_values(obj: dict, value_keys: list[str] | dict[str, str] | Callable):
     if isinstance(value_keys, dict):
         retval = []
         for value_key, obj_key in value_keys.items():
-            retval.extend(expand_value(value_key, obj[obj_key]))
+            retval.extend(expand_value(value_key, obj.get(obj_key)))
         return dict(retval)
     elif callable(value_keys):
         return value_keys(obj)
@@ -117,6 +117,8 @@ def get_values(obj: dict, value_keys: list[str] | dict[str, str] | Callable):
         raise ValueError("value_keys must be a list, a dictionary, or a callable")
     
 def expand_value(k, s):
+    if not s:
+        return []
     if isinstance(s, list):
         s = dict(enumerate(s))
     if isinstance(s, dict):

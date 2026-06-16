@@ -65,6 +65,12 @@ class TestValueHelpers:
 
         assert values == {"tlp": "amber", "name": "TLP:AMBER"}
 
+    def test_get_values_skip_empty(self):
+        assert get_values({}, ["objects"]) == {}
+        assert get_values({"objects": ""}, ["objects"]) == {}
+        assert get_values({"objects": None, "another": "one"}, ["objects"]) == {}
+        assert get_values({"another": "one"}, ["objects", "another"]) == {"another": "one"}
+
     def test_get_values_raises_on_invalid_value_keys_type(self):
         with pytest.raises(
             ValueError,
