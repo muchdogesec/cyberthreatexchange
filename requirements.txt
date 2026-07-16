@@ -10,8 +10,6 @@ annotated-types==0.7.0
     # via pydantic
 antlr4-python3-runtime==4.13.2
     # via stix2-patterns
-apscheduler==3.11.2
-    # via django-apscheduler
 asgiref==3.11.1
     # via
     #   django
@@ -47,13 +45,10 @@ cryptography==46.0.7
 django==5.2.14
     # via
     #   -r requirements.in
-    #   django-apscheduler
     #   django-cors-headers
     #   django-filter
     #   djangorestframework
     #   drf-spectacular
-django-apscheduler==0.7.0
-    # via -r requirements.in
 django-cleanup==9.0.0
     # via -r requirements.in
 django-cors-headers==4.9.0
@@ -174,9 +169,7 @@ typing-inspection==0.4.2
 tzdata==2025.3
     # via kombu
 tzlocal==5.3.1
-    # via
-    #   apscheduler
-    #   celery
+    # via celery
 uritemplate==4.2.0
     # via drf-spectacular
 urllib3==2.6.3
