@@ -377,7 +377,10 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
         object_map = dict(v['objects'])
         if not query_cursor:
             obj_ids.insert(0, obj_id)
-        objects = list(map(lambda x: object_map[x], obj_ids))
+        objects = []
+        for obj_id in obj_ids:
+            if obj_id in object_map:
+                objects.append(object_map[obj_id])
         return Response({
             "objects": objects,
             "next": next_window_cursor,
