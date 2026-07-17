@@ -369,7 +369,7 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
         )
         results = self.execute_query(query, bind_vars=binds, paginate=False)
         if not results:
-            return Response({"objects": [], "next": None, "count": 0})
+            return Response({"objects": [], "next": None, "size": 0})
         v = results[0]
         next_window_cursor, obj_ids = make_cursor_for_next_page(
             v["level1Edges"], v["level2Edges"], binds["pairLimit"]
@@ -384,7 +384,7 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
         return Response({
             "objects": objects,
             "next": next_window_cursor,
-            "count": len(obj_ids),
+            "size": len(obj_ids),
         })
     
     def get_objects(self, feed):
@@ -407,7 +407,7 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
         return Response({
             "objects": results,
             "next": next_added_after,
-            "count": len(results),
+            "size": len(results),
         })
 
 
