@@ -4,6 +4,7 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 from django.db import transaction
 from cyberthreatexchange.server import models
+from django.db.models import Q
 
 
 class Command(BaseCommand):
@@ -21,8 +22,8 @@ class Command(BaseCommand):
         days = options["days"]
         cutoff = timezone.now() - timedelta(days=days)
 
-        # Identify obstracts jobs older than the cutoff
-        obs_jobs_qs = models.Job.objects.filter(completion_time__lt=cutoff)
+        # Identify ctx jobs that completed before the cutoff or started before the cutoff minus 3 days (to account for long-running jobs)
+        obs_jobs_qs = models.Job.objects.filter(Q(completion_time__lt=cutoff) | Q(start_time__lt=cutoff - timedelta(days=3)))
         count = obs_jobs_qs.count()
 
         if count == 0:
