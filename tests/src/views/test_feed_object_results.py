@@ -130,7 +130,7 @@ class TestFeedObjectsViewList:
                 {"id": "malware--2", "type": "malware"},
             ],
             "next": "2024-01-01T11:00:00.000Z",
-            "count": 2,
+            "size": 2,
         }
 
         called_args, called_kwargs = mock_execute_query.call_args
