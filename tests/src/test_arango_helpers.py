@@ -188,7 +188,7 @@ class TestGetObjects:
                 {"id": "malware--2", "type": "malware"},
             ],
             "next": "2024-01-01T11:00:00.000Z",
-            "count": 2,
+            "size": 2,
         }
         assert arango_helper.execute_query.call_count == 1
         called_query, called_kwargs = arango_helper.execute_query.call_args
@@ -310,5 +310,5 @@ class TestArangoDBHelperWithRealData:
         response = helper.get_bundle("vertex-a", feed)
         assert response.status_code == 200
         assert response.data["objects"] == [{'id': 'vertex-a'}, {'id': 'edge-2'}, {'id': 'vertex-b'}, {'id': 'edge-2'}]
-        assert response.data["count"] == 4
+        assert response.data["size"] == 4
         

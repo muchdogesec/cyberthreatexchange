@@ -21,8 +21,8 @@ class PlaceholderStixObjectSerializer(StixObjectsPlaceholderSerializer):
 
 @extend_schema_serializer(many=False)
 class BundleObjects(serializers.Serializer):
-    next = serializers.CharField()
-    count = serializers.IntegerField()
+    next = serializers.CharField(required=False, allow_null=True)
+    size = serializers.IntegerField(required=False, default=0)
     objects = StixObjectsPlaceholderSerializer(many=True)
 
 
