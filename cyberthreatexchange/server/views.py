@@ -56,6 +56,7 @@ from dogesec_commons.identity import (
 class ChoiceCSVFilter(BaseCSVFilter):
     field_class = ChoiceField
 
+SEARCH_TYPES = list(set(ALL_SEARCH_TYPES).union(type_value_map))
 
 @extend_schema_view(
     list=extend_schema(
@@ -292,8 +293,6 @@ class FeedView(viewsets.ModelViewSet):
         description=textwrap.dedent(
             """
             Search an filter on all objects (SDOs, SCOs, SROs, and SMOs) found in this feed.
-
-            Due to differences between SDOs, SCOs, SROs, and SMOs, you can perform more advanced filtering for the STIX object type on `object/sdo`, `object/sco`, `object/sro` and `object/smo` endpoints.
             """
         ),
         parameters=[
@@ -310,7 +309,7 @@ class FeedView(viewsets.ModelViewSet):
             OpenApiParameter(
                 "types",
                 description="Only show objects of selected types",
-                enum=ALL_SEARCH_TYPES,
+                enum=SEARCH_TYPES,
                 explode=False,
                 style="form",
                 many=True,
@@ -356,7 +355,7 @@ class FeedView(viewsets.ModelViewSet):
             OpenApiParameter(
                 "types",
                 description="Only include direct relationships whose related objects are in this STIX type list.",
-                enum=ALL_SEARCH_TYPES,
+                enum=SEARCH_TYPES,
                 explode=False,
                 style="form",
                 many=True,
@@ -364,7 +363,7 @@ class FeedView(viewsets.ModelViewSet):
             OpenApiParameter(
                 "secondary_types",
                 description="Only include secondary relationships whose related objects are in this STIX type list. Defaults to `types` when omitted.",
-                enum=ALL_SEARCH_TYPES,
+                enum=SEARCH_TYPES,
                 explode=False,
                 style="form",
                 many=True,
