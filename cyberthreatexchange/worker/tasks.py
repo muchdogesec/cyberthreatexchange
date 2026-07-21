@@ -23,6 +23,7 @@ from cyberthreatexchange.worker.utils import md5_hash
 from .celery import app
 from stix2arango.stix2arango import Stix2Arango
 import logging
+from celery import signals
 
 if typing.TYPE_CHECKING:
     from .. import settings
@@ -33,7 +34,8 @@ class CustomTask(Task):
         job = Job.objects.get(pk=kwargs["job_id"])
         job.state = models.JobStates.FAILED
         job.errors.append(f"celery task {self.name} failed with: {exc}")
-        job.save(update_fields=["state", "errors"])
+        job.completion_time = timezone.now()
+        job.save(update_fields=["state", "errors", "completion_time"])
         return super().on_failure(exc, task_id, args, kwargs, einfo)
 
     def before_start(self, task_id, args, kwargs):
@@ -57,14 +59,6 @@ def upload_bundle_task(job_id=None, warnings=None):
     job.feed.save(update_fields=["last_run"])
 
 
-from celery import signals
-
-
-@signals.worker_ready.connect
-def mark_old_jobs_as_failed(**kwargs):
-    Job.objects.filter(state=models.JobStates.PENDING).update(
-        state=models.JobStates.FAILED, errors=["marked as failed on startup"]
-    )
 
 
 def get_existing_object_pks(feed, object_ids):
@@ -233,9 +227,6 @@ def rerun_relationship_uploads(job: models.Job):
     return objects, context.get("warnings", {})
 
 
-from celery import signals
-
-
 @signals.worker_ready.connect
 def mark_old_jobs_as_failed(**kwargs):
     models.Job.objects.exclude(
@@ -246,4 +237,5 @@ def mark_old_jobs_as_failed(**kwargs):
     ).update(
         state=models.JobStates.FAILED,
         errors=[{"message": "Marked as failed on startup"}],
+        completion_time=timezone.now(),
     )
