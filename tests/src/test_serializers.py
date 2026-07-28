@@ -6,6 +6,7 @@ import pytest
 from unittest.mock import MagicMock, Mock, patch
 from rest_framework.exceptions import ValidationError
 from cyberthreatexchange.server import serializers, models
+from cyberthreatexchange.worker.utils import md5_hash
 from tests.src.data import (
     apt29_malware,
     apt29_threat_actor,
@@ -263,27 +264,133 @@ class TestSTIXObjectSerializer:
             serializer.to_internal_value(invalid_stix)
         assert "Invalid STIX object" in str(exc_info.value)
 
-    def test_versioning_validation_created_mismatch(self):
+    def test_created_mismatch_with_changed_content_rewrites_created_and_warns(self):
+        """A real update whose `created` drifted from the existing version is
+        accepted: `created` is rewritten to the existing value and a
+        `created_mismatch`/`rewrite` warning is recorded, instead of rejecting
+        the whole bundle."""
+        existing_created = "2020-01-01T00:00:00.000Z"
         existing = {
             "id": "malware--b86c76a7-7f4b-4517-9c9c-972f19a1aecf",
-            "created": "2020-01-01T00:00:00.000Z",
+            "created": existing_created,
             "modified": "2020-01-01T00:00:00.000Z",
+            "_record_md5_hash": "0" * 32,  # never matches -> content really changed
         }
         new_obj = apt29_malware.copy()
-        new_obj["id"] = "malware--b86c76a7-7f4b-4517-9c9c-972f19a1aecf"
+        new_obj["id"] = existing["id"]
         new_obj["created"] = "2020-02-01T00:00:00.000Z"  # Different
         new_obj["modified"] = "2020-02-01T00:00:00.000Z"
 
         context = {
-            "existing_objects": {
-                "malware--b86c76a7-7f4b-4517-9c9c-972f19a1aecf": existing
-            }
+            "existing_objects": {existing["id"]: existing},
+            "current_index": 0,
         }
         serializer = self.serializer_with_context(context=context)
 
-        with pytest.raises(ValidationError) as exc_info:
-            serializer.to_internal_value(new_obj)
-        assert "created" in exc_info.value.detail
+        result = serializer.to_internal_value(new_obj)
+
+        assert result["created"] == existing_created
+        warning = context["warnings"][0]
+        assert warning["type"] == "created_mismatch"
+        assert warning["resolution"] == "rewrite"
+        assert warning["created"] == existing_created
+
+    def test_created_mismatch_with_unchanged_content_is_skipped_as_existing_object(
+        self,
+    ):
+        """If, aside from `created`/`modified`, the object is byte-identical to
+        the existing version, it's a no-op re-upload: skipped as `existing_object`
+        rather than rewritten or rejected."""
+        existing_created = "2020-01-01T00:00:00.000Z"
+        new_obj = apt29_malware.copy()
+        new_obj["id"] = "malware--57e7f500-7282-46c0-bb1a-aff96f554d02"
+        new_obj["created"] = "2020-02-01T00:00:00.000Z"  # Different, no other changes
+        new_obj["modified"] = "2020-03-01T00:00:00.000Z"
+
+        normalized = new_obj.copy()
+        normalized["created"] = existing_created
+        existing = {
+            "id": new_obj["id"],
+            "created": existing_created,
+            "modified": "2020-01-01T00:00:00.000Z",
+            "_record_md5_hash": md5_hash(normalized),
+        }
+
+        context = {
+            "existing_objects": {existing["id"]: existing},
+            "current_index": 3,
+        }
+        serializer = self.serializer_with_context(context=context)
+
+        result = serializer.to_internal_value(new_obj)
+
+        # Not rewritten in-place for a skip; the object simply won't be uploaded.
+        assert result["created"] == new_obj["created"]
+        warning = context["warnings"][3]
+        assert warning["type"] == "existing_object"
+        assert warning["resolution"] == "skipped"
+
+    def test_update_with_matching_created_and_changed_content_has_no_warning(self):
+        existing = {
+            "id": "malware--57e7f500-7282-46c0-bb1a-aff96f554d03",
+            "created": "2020-01-01T00:00:00.000Z",
+            "modified": "2020-01-01T00:00:00.000Z",
+        }
+        new_obj = apt29_malware.copy()
+        new_obj["id"] = existing["id"]
+        new_obj["created"] = existing["created"]
+        new_obj["modified"] = "2020-02-01T00:00:00.000Z"
+
+        context = {
+            "existing_objects": {existing["id"]: existing},
+            "current_index": 0,
+        }
+        serializer = self.serializer_with_context(context=context)
+
+        result = serializer.to_internal_value(new_obj)
+
+        assert result == new_obj
+        assert context.get("warnings", {}) == {}
+
+    def test_duplicate_object_marked_skipped_via_seen_ids(self):
+        """The second occurrence of an id within the same upload is flagged as
+        a duplicate via context['seen_ids'], regardless of existing_objects."""
+        context = {"current_index": 0}
+        serializer = self.serializer_with_context(context=context)
+        serializer.to_internal_value(apt29_malware)
+
+        assert context.get("warnings", {}) == {}
+
+        context["current_index"] = 1
+        serializer.to_internal_value(apt29_malware)
+
+        assert 0 not in context["warnings"]
+        warning = context["warnings"][1]
+        assert warning["type"] == "duplicate_object"
+        assert warning["resolution"] == "skipped"
+        assert warning["id"] == apt29_malware["id"]
+
+    def test_existing_object_no_op_skips_hard_versioning_checks(self):
+        """A no-op resend (matching hash) shouldn't be rejected for a `modified`
+        that isn't strictly greater, since it's never actually applied."""
+        new_obj = apt29_malware.copy()
+        existing = {
+            "id": new_obj["id"],
+            "created": new_obj["created"],
+            "modified": new_obj["modified"],  # equal, not strictly greater
+            "_record_md5_hash": md5_hash(new_obj),
+        }
+
+        context = {
+            "existing_objects": {existing["id"]: existing},
+            "current_index": 0,
+        }
+        serializer = self.serializer_with_context(context=context)
+
+        result = serializer.to_internal_value(new_obj)
+
+        assert result == new_obj
+        assert context["warnings"][0]["type"] == "existing_object"
 
     def test_versioning_validation_modified_not_greater(self):
         existing = {
@@ -380,6 +487,80 @@ class TestBundleSerializer:
         assert "objects" in serializer.errors
 
 
+class TestBundleSerializerVersioning:
+    """End-to-end coverage of the warning/rewrite behaviour through BundleSerializer,
+    exercising STIXObjectSerializer and WarningAwareListField together the same way
+    the bundle-upload endpoint does."""
+
+    def test_bundle_accepts_created_mismatch_and_rewrites_created(self):
+        existing_id = apt29_malware["id"]
+        existing = {
+            "id": existing_id,
+            "created": apt29_malware["created"],
+            "modified": apt29_malware["modified"],
+            "_record_md5_hash": "0" * 32,
+        }
+        new_obj = apt29_malware.copy()
+        new_obj["created"] = "2021-01-01T00:00:00.000Z"
+        new_obj["modified"] = "2021-01-01T00:00:00.000Z"
+
+        bundle_data = {
+            "type": "bundle",
+            "id": "bundle--11111111-1111-4111-8111-111111111111",
+            "objects": [new_obj],
+        }
+        context = {"existing_objects": {existing_id: existing}, "warnings": {}}
+        serializer = serializers.BundleSerializer(data=bundle_data, context=context)
+
+        assert serializer.is_valid(), serializer.errors
+        assert (
+            serializer.validated_data["objects"][0]["created"]
+            == apt29_malware["created"]
+        )
+        assert context["warnings"][0]["type"] == "created_mismatch"
+        assert context["warnings"][0]["resolution"] == "rewrite"
+
+    def test_bundle_skips_object_that_already_exists_unchanged(self):
+        existing_id = apt29_threat_actor["id"]
+        new_obj = apt29_threat_actor.copy()
+        new_obj["created"] = "2099-01-01T00:00:00.000Z"  # differs, content otherwise same
+        normalized = new_obj.copy()
+        normalized["created"] = apt29_threat_actor["created"]
+        existing = {
+            "id": existing_id,
+            "created": apt29_threat_actor["created"],
+            "modified": apt29_threat_actor["modified"],
+            "_record_md5_hash": md5_hash(normalized),
+        }
+
+        bundle_data = {
+            "type": "bundle",
+            "id": "bundle--22222222-2222-4222-8222-222222222222",
+            "objects": [new_obj],
+        }
+        context = {"existing_objects": {existing_id: existing}, "warnings": {}}
+        serializer = serializers.BundleSerializer(data=bundle_data, context=context)
+
+        assert serializer.is_valid(), serializer.errors
+        assert serializer.validated_data["objects"] == []
+        assert context["warnings"][0]["type"] == "existing_object"
+        assert context["warnings"][0]["resolution"] == "skipped"
+
+    def test_bundle_marks_duplicate_ids_as_skipped(self):
+        bundle_data = {
+            "type": "bundle",
+            "id": "bundle--33333333-3333-4333-8333-333333333333",
+            "objects": [apt29_malware, apt29_malware, apt29_threat_actor],
+        }
+        context = {"warnings": {}}
+        serializer = serializers.BundleSerializer(data=bundle_data, context=context)
+
+        assert serializer.is_valid(), serializer.errors
+        assert len(serializer.validated_data["objects"]) == 2
+        assert context["warnings"][1]["type"] == "duplicate_object"
+        assert context["warnings"][1]["resolution"] == "skipped"
+
+
 class TestWarningAwareListField:
     def get_serializer(self, context=None):
         field = serializers.WarningAwareListField(
@@ -429,6 +610,19 @@ class TestWarningAwareListField:
 
         # Should have error at index 1
         assert 1 in exc_info.value.detail
+
+    def test_field_marks_duplicate_objects_as_skipped(self):
+        """The child serializer detects duplicates mid-validation (via
+        context['seen_ids']); the field must still drop them from the result."""
+        context = {"warnings": {}}
+
+        field = self.get_serializer(context=context)
+        data = [apt29_malware, apt29_malware, apt29_threat_actor]
+        result = field.run_child_validation(data)
+
+        assert len(result) == 2
+        assert context["warnings"][1]["type"] == "duplicate_object"
+        assert context["warnings"][1]["resolution"] == "skipped"
 
 
 class TestStixVersionsSerializer:

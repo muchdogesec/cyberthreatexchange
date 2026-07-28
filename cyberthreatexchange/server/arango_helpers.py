@@ -21,8 +21,6 @@ from cyberthreatexchange.server import models, utils
 from arango.database import StandardDatabase
 from rest_framework.request import Request
 
-from cyberthreatexchange.worker.utils import md5_hash
-
 if typing.TYPE_CHECKING:
     from .. import settings
 
@@ -556,9 +554,12 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
         return True
 
     def build_context(self, context: dict, objects: list[dict], feed: models.Feed):
+        """
+        Gathers the shared lookups (object/relationship ids in this upload, and any
+        existing objects in the feed sharing those ids) needed to validate a bundle.
+        """
         obj_ids = []
         rel_ids = {}
-        warnings = {}
         try:
             for obj in objects:
                 obj_id = obj["id"]
@@ -576,55 +577,8 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
             existing_objects=self.get_existing_objects(
                 feed, list(itertools.chain(obj_ids, *rel_ids.values()))
             ),
-            warnings=warnings,
+            warnings={},
         )
-        for i, obj in enumerate(objects):
-            if obj_ids.count(obj["id"]) > 1:
-                warnings[i] = {
-                    "type": "duplicate_object",
-                    "message": f"Duplicate object removed before upload",
-                    "id": obj["id"],
-                    "resolution": "skipped",
-                    "index": i,
-                }
-                obj_ids.remove(obj["id"])
-            if obj["id"] in context["existing_objects"] and md5_hash(obj) == context[
-                "existing_objects"
-            ][obj["id"]].get("_record_md5_hash"):
-                warnings[i] = {
-                    "type": "existing_object",
-                    "message": f"stix object already exists in backend",
-                    "id": obj["id"],
-                    "resolution": "skipped",
-                    "index": i,
-                }
-            if obj["type"] == "relationship":
-                source_ref = obj.get("source_ref")
-                target_ref = obj.get("target_ref")
-                if (
-                    source_ref not in obj_ids
-                    and source_ref not in context["existing_objects"]
-                ):
-                    warnings[i] = {
-                        "type": "missing_source",
-                        "message": f"could not resolve obj.source_ref ({source_ref}) for relationship in feed or upload",
-                        "id": obj["id"],
-                        "resolution": "skipped",
-                        "index": i,
-                    }
-                    continue
-                if (
-                    target_ref not in obj_ids
-                    and target_ref not in context["existing_objects"]
-                ):
-                    warnings[i] = {
-                        "type": "missing_target",
-                        "message": f"could not resolve obj.target_ref ({target_ref}) for relationship in feed or upload",
-                        "id": obj["id"],
-                        "resolution": "skipped",
-                        "index": i,
-                    }
-                    continue
         return context
 
 def decode_bundle_cursor(cursor):

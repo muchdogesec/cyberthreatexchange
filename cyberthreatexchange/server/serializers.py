@@ -11,6 +11,7 @@ from rest_framework import serializers, validators
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework.fields import get_error_detail
 from drf_spectacular.utils import extend_schema_serializer
+from cyberthreatexchange.worker.utils import md5_hash
 
 class StixObjectsPlaceholderSerializer(serializers.Serializer):
     type = serializers.CharField()
@@ -129,32 +130,78 @@ def validate_stix(data):
 
 
 class STIXObjectSerializer(serializers.DictField):
+    """
+    Validates a single STIX object within a bundle upload and, in the same pass,
+    works out any warning that applies to it: duplicate ids within the upload
+    (`context['seen_ids']`), no-op re-uploads of an unchanged object, or a
+    `created_mismatch` update whose `created` no longer matches the existing
+    object's (rewritten rather than rejected). `modified` regressions and
+    `created_by_ref` mismatches remain hard validation errors that reject the
+    whole bundle.
+    """
+
     def to_internal_value(self, data):
         if not isinstance(data, dict):
             raise serializers.ValidationError(
                 "STIX object must be a JSON object (dict)."
             )
         validate_stix(data)
-        existing_objects = self.context.get("existing_objects", {})
 
         obj_id = data["id"]
-        if obj_id and obj_id in existing_objects:
-            self._validate_versioning(existing_objects[obj_id], data)
+        idx = self.context.get("current_index")
+        warnings = self.context.setdefault("warnings", {})
+        seen_ids = self.context.setdefault("seen_ids", set())
+
+        if obj_id in seen_ids:
+            warnings[idx] = {
+                "type": "duplicate_object",
+                "message": "Duplicate object removed before upload",
+                "id": obj_id,
+                "resolution": "skipped",
+                "index": idx,
+            }
+            return data
+        seen_ids.add(obj_id)
+
+        existing_objects = self.context.get("existing_objects", {})
+        existing = existing_objects.get(obj_id)
+        if existing:
+            warning = self._validate_versioning(existing, data, idx)
+            if warning:
+                warnings[idx] = warning
+                if warning["resolution"] == "rewrite":
+                    data["created"] = warning["created"]
         return data
 
-    def _validate_versioning(self, existing, raw_new):
+    def _validate_versioning(self, existing, raw_new, idx):
+        new_created = raw_new.get("created")
+        existing_created = existing.get("created")
+        existing_hash = existing.get("_record_md5_hash")
+
+        # An object whose only differences from the existing version are its
+        # timestamps is a no-op re-upload: skip it before enforcing the
+        # modified/created_by_ref checks below, which don't apply to no-ops.
+        created_differs = bool(
+            existing_created and new_created and new_created != existing_created
+        )
+        normalized = raw_new
+        if created_differs:
+            normalized = raw_new.copy()
+            normalized["created"] = existing_created
+
+        if existing_hash and md5_hash(normalized) == existing_hash:
+            return {
+                "type": "existing_object",
+                "message": "stix object already exists in backend",
+                "id": raw_new["id"],
+                "resolution": "skipped",
+                "index": idx,
+            }
+
         errors = {}
 
-        new_created = raw_new.get("created")
         new_modified = raw_new.get("modified")
-
-        existing_created = existing.get("created")
         existing_modified = existing.get("modified")
-
-        if existing_created and new_created and new_created != existing_created:
-            errors["created"] = (
-                f"'created' timestamp must match existing version ({existing_created})."
-            )
 
         if existing_modified and new_modified and new_modified < existing_modified:
             errors["modified"] = (
@@ -172,6 +219,19 @@ class STIXObjectSerializer(serializers.DictField):
         if errors:
             raise serializers.ValidationError(errors)
 
+        if created_differs:
+            return {
+                "type": "created_mismatch",
+                "message": (
+                    f"'created' timestamp rewritten to match existing version ({existing_created})"
+                ),
+                "id": raw_new["id"],
+                "resolution": "rewrite",
+                "index": idx,
+                "created": existing_created,
+            }
+        return None
+
     def to_representation(self, value):
         return value
 
@@ -180,18 +240,22 @@ class WarningAwareListField(serializers.ListField):
     def run_child_validation(self, data):
         result = []
         errors = {}
+        warnings = self.context.setdefault("warnings", {})
         for idx, item in enumerate(data):
-            if (
-                idx in self.context.get("warnings", {})
-                and self.context["warnings"][idx]["resolution"] == "skipped"
-            ):
+            if warnings.get(idx, {}).get("resolution") == "skipped":
                 continue
+            self.context["current_index"] = idx
             try:
-                result.append(self.child.run_validation(item))
+                value = self.child.run_validation(item)
             except validators.ValidationError as e:
                 errors[idx] = e.detail
+                continue
             except DjangoValidationError as e:
                 errors[idx] = get_error_detail(e)
+                continue
+            if warnings.get(idx, {}).get("resolution") == "skipped":
+                continue
+            result.append(value)
         if not errors:
             return result
         raise validators.ValidationError(errors)
