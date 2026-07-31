@@ -15,6 +15,7 @@ from drf_spectacular.types import OpenApiTypes
 from dogesec_commons.objects.helpers import (
     ArangoDBHelper as DSC_ArangoDBHelper,
     SCO_TYPES,
+    ValidationError,
 )
 from rest_framework import exceptions
 from cyberthreatexchange.server import models, utils
@@ -348,7 +349,12 @@ class ArangoDBHelper(DSC_ArangoDBHelper):
 
     def get_bundle(self, obj_id, feed: models.Feed):
         pair_limit = self.get_limit()
-        query_cursor = decode_bundle_cursor(self.query.get("cursor")) or {}
+        try:
+            query_cursor = decode_bundle_cursor(self.query.get("cursor")) or {}
+        except ValidationError:
+            raise
+        except Exception as e:
+            raise ValidationError({"cursor": f"Invalid bundle cursor: {e}"})
 
         is_ref_matcher = [False, None]
         if self.query_as_bool('show_embedded_refs'):
@@ -587,7 +593,7 @@ def decode_bundle_cursor(cursor):
     payload = base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4))
     version, k1_len, kid_len, k2_len, index = struct.unpack("!BIIIQ", payload[:21])
     if version != BUNDLE2_CURSOR_VERSION:
-        raise ValueError(f"Unsupported bundle cursor version: {version}")
+        raise ValidationError({"cursor": f"Unsupported bundle cursor version: {version}"})
 
     offset = 21
     k1 = payload[offset : offset + k1_len].decode("utf-8") or None
