@@ -389,7 +389,7 @@ class FeedView(viewsets.ModelViewSet):
                 type=OpenApiTypes.BOOL,
             )
         ],
-        responses=serializers.BundleObjects(),
+        responses={200: serializers.BundleObjects(), 400: DEFAULT_400_RESPONSE},
         filters=False,
     ),
 )
