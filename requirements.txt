@@ -40,7 +40,7 @@ click-plugins==1.1.1.2
     # via celery
 click-repl==0.3.0
     # via celery
-cryptography==49.0.0
+cryptography==50.0.0
     # via -r requirements.in
 django==5.2.16
     # via
