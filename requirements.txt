@@ -57,7 +57,7 @@ django-filter==26.1
     # via
     #   -r requirements.in
     #   dogesec-commons
-djangorestframework==3.17.1
+djangorestframework==3.18.2
     # via
     #   -r requirements.in
     #   dogesec-commons
