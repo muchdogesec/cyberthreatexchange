@@ -18,7 +18,5 @@ dogesec_commons
 stix2arango
 stix2extensions
 
-django-apscheduler
-
 ## production
 gunicorn==23.0.0

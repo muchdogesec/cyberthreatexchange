@@ -32,6 +32,8 @@ def guess_kb_data(obj: dict) -> tuple[str | None, dict]:
     match obj_type:
         case "weakness":
             kb_name = "cwe"
+        case "location":
+            kb_name = "location"
     # Check for MITRE ATT&CK domains
     x_mitre_domains = obj.get("x_mitre_domains", [])
     if x_mitre_domains:
@@ -93,12 +95,12 @@ def get_marking_definitions_values(obj):
 
 def get_location_values(obj):
     values = {}
-    for key in ["name", "region"]:
+    for key in ["name", "region", "country", "latitude", "longitude"]:
         if key in obj:
             values[key] = obj[key]
     for ext_ref in obj.get("external_references", []):
         source_name = ext_ref.get("source_name", "")
-        if source_name in ["type", "alpha-3"]:
+        if source_name in ["type", "alpha-3", "alpha-2", "country-code"]:
             values[source_name] = ext_ref["external_id"]
     return values
 
@@ -231,6 +233,7 @@ ALL_KNOWLEDGEBASES = {
     "capec",
     "atlas",
     "disarm",
+    "location",
 }
 
 def extract_object_metadata(obj: dict) -> dict:
