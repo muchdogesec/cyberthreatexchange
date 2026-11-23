@@ -23,6 +23,7 @@ from cyberthreatexchange.worker.utils import md5_hash
 from .celery import app
 from stix2arango.stix2arango import Stix2Arango
 import logging
+from celery import signals
 
 if typing.TYPE_CHECKING:
     from .. import settings
@@ -33,7 +34,8 @@ class CustomTask(Task):
         job = Job.objects.get(pk=kwargs["job_id"])
         job.state = models.JobStates.FAILED
         job.errors.append(f"celery task {self.name} failed with: {exc}")
-        job.save(update_fields=["state", "errors"])
+        job.completion_time = timezone.now()
+        job.save(update_fields=["state", "errors", "completion_time"])
         return super().on_failure(exc, task_id, args, kwargs, einfo)
 
     def before_start(self, task_id, args, kwargs):
@@ -57,14 +59,6 @@ def upload_bundle_task(job_id=None, warnings=None):
     job.feed.save(update_fields=["last_run"])
 
 
-from celery import signals
-
-
-@signals.worker_ready.connect
-def mark_old_jobs_as_failed(**kwargs):
-    Job.objects.filter(state=models.JobStates.PENDING).update(
-        state=models.JobStates.FAILED, errors=["marked as failed on startup"]
-    )
 
 
 def get_existing_object_pks(feed, object_ids):
@@ -107,7 +101,10 @@ def make_uploads(job_id, objects, warnings=None, arango_extra=None):
     arango_extra = arango_extra or {}
     for i, obj_it in enumerate(objects):
         obj = obj_it.copy()
-        if i not in warnings:
+        warning = warnings.get(i)
+        if warning is None or warning.get("resolution") == "rewrite":
+            if warning and "created" in warning:
+                obj["created"] = warning["created"]
             objects_to_process.append(obj)
             obj["_record_md5_hash"] = md5_hash(obj)
             obj.update(arango_extra)
@@ -203,20 +200,28 @@ def poll_taxii_connector_task(job_id=None, connector_id=None, added_after=None):
         feed.save(update_fields=["last_run"])
 
 
+def _known_ids(context: dict):
+    """ids resolvable either from within this upload or from the feed already"""
+    return set(context.get("obj_ids", [])) | set(context.get("existing_objects", {}))
+
+
 def remove_problematic_relationships(job: models.Job, objects):
     helper = ArangoDBHelper("", None)
     context = {}
     helper.build_context(context, objects, job.feed)
+    known_ids = _known_ids(context)
     retval: list = objects.copy()
-    for i, warning in context.get("warnings", {}).items():
-        if warning["type"] in ["missing_source", "missing_target"]:
+    for obj in objects:
+        if obj.get("type") != "relationship":
+            continue
+        refs = {obj.get("source_ref"), obj.get("target_ref")}
+        if not known_ids.issuperset(refs):
             models.UnprocessedRelationship.objects.create(
                 job=job,
-                stix_id=warning["id"],
-                # relationship_type=warning["type"],
-                stix_data=objects[i],
+                stix_id=obj["id"],
+                stix_data=obj,
             )
-            retval.remove(objects[i])
+            retval.remove(obj)
     return retval
 
 
@@ -226,14 +231,36 @@ def rerun_relationship_uploads(job: models.Job):
     helper = ArangoDBHelper("", None)
     context = {}
     helper.build_context(context, objects, job.feed)
-    warned_ids = {warning["id"] for warning in context.get("warnings", {}).values()}
+    known_ids = _known_ids(context)
+    warnings = {}
+    unresolved_ids = set()
+    for i, obj in enumerate(objects):
+        source_ref = obj.get("source_ref")
+        target_ref = obj.get("target_ref")
+        if source_ref not in known_ids:
+            unresolved_ids.add(obj["id"])
+            warnings[i] = {
+                "type": "missing_source",
+                "message": f"could not resolve obj.source_ref ({source_ref}) for relationship in feed or upload",
+                "id": obj["id"],
+                "resolution": "skipped",
+                "index": i,
+            }
+            continue
+        if target_ref not in known_ids:
+            unresolved_ids.add(obj["id"])
+            warnings[i] = {
+                "type": "missing_target",
+                "message": f"could not resolve obj.target_ref ({target_ref}) for relationship in feed or upload",
+                "id": obj["id"],
+                "resolution": "skipped",
+                "index": i,
+            }
+            continue
     for r in relationships:
-        if r.stix_id not in warned_ids:
+        if r.stix_id not in unresolved_ids:
             r.delete()
-    return objects, context.get("warnings", {})
-
-
-from celery import signals
+    return objects, warnings
 
 
 @signals.worker_ready.connect
@@ -246,4 +273,5 @@ def mark_old_jobs_as_failed(**kwargs):
     ).update(
         state=models.JobStates.FAILED,
         errors=[{"message": "Marked as failed on startup"}],
+        completion_time=timezone.now(),
     )

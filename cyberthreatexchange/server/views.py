@@ -56,6 +56,7 @@ from dogesec_commons.identity import (
 class ChoiceCSVFilter(BaseCSVFilter):
     field_class = ChoiceField
 
+SEARCH_TYPES = list(set(ALL_SEARCH_TYPES).union(type_value_map))
 
 @extend_schema_view(
     list=extend_schema(
@@ -292,15 +293,13 @@ class FeedView(viewsets.ModelViewSet):
         description=textwrap.dedent(
             """
             Search an filter on all objects (SDOs, SCOs, SROs, and SMOs) found in this feed.
-
-            Due to differences between SDOs, SCOs, SROs, and SMOs, you can perform more advanced filtering for the STIX object type on `object/sdo`, `object/sco`, `object/sro` and `object/smo` endpoints.
             """
         ),
         parameters=[
             OpenApiParameter(
                 "added_after",
-                description="Only return objects modified after this timestamp. Use ISO8601 format.",
-                type=OpenApiTypes.STR,
+                description="This parameter is used for pagination, to see more data, you need to pass the `next` property of a previous request in this filter. Only return objects updated since the specified date. Format must be ISO8601 (e.g. `2020-01-01T00:00:00Z`). We use this property instead of `modified` because SCOs do not have a modified time.",
+                type=OpenApiTypes.DATETIME,
             ),
             OpenApiParameter(
                 "limit",
@@ -310,7 +309,7 @@ class FeedView(viewsets.ModelViewSet):
             OpenApiParameter(
                 "types",
                 description="Only show objects of selected types",
-                enum=ALL_SEARCH_TYPES,
+                enum=SEARCH_TYPES,
                 explode=False,
                 style="form",
                 many=True,
@@ -356,7 +355,7 @@ class FeedView(viewsets.ModelViewSet):
             OpenApiParameter(
                 "types",
                 description="Only include direct relationships whose related objects are in this STIX type list.",
-                enum=ALL_SEARCH_TYPES,
+                enum=SEARCH_TYPES,
                 explode=False,
                 style="form",
                 many=True,
@@ -364,7 +363,7 @@ class FeedView(viewsets.ModelViewSet):
             OpenApiParameter(
                 "secondary_types",
                 description="Only include secondary relationships whose related objects are in this STIX type list. Defaults to `types` when omitted.",
-                enum=ALL_SEARCH_TYPES,
+                enum=SEARCH_TYPES,
                 explode=False,
                 style="form",
                 many=True,
@@ -390,7 +389,7 @@ class FeedView(viewsets.ModelViewSet):
                 type=OpenApiTypes.BOOL,
             )
         ],
-        responses=serializers.BundleObjects(),
+        responses={200: serializers.BundleObjects(), 400: DEFAULT_400_RESPONSE},
         filters=False,
     ),
 )
@@ -421,9 +420,6 @@ class FeedObjectsView(viewsets.GenericViewSet):
 
     class filterset_class(FilterSet):
         stix_ids = BaseCSVFilter(lookup_expr="in", help_text="Filter by STIX IDs.")
-        updated_since = DateTimeFilter(
-            help_text="Only return objects updated since the specified date. Format must be ISO8601 (e.g. `2020-01-01T00:00:00Z`). We use this property instead of `modified` because SCOs do not have a modified time."
-        )
 
     def list(self, request, feed_id=None):
         feed = get_object_or_404(models.Feed, id=feed_id)

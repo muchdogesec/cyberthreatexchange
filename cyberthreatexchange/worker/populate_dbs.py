@@ -5,7 +5,6 @@ import arango.exceptions, arango.job
 from django.conf import settings
 from arango.client import ArangoClient
 from arango.database import StandardDatabase, AsyncDatabase, Request
-from dogesec_commons.objects import db_view_creator
 import argparse
 
 if typing.TYPE_CHECKING:
@@ -35,7 +34,7 @@ def await_result_with_timeout(async_result, timeout=5, sleep=0.2):
         try:
             return async_result.result()
         except arango.exceptions.AsyncJobResultError as e:
-            print(e.response)
+            print('.', end='')
             if timeout and (time.time() - start_time) > timeout:
                 raise TimeoutError(f"Async job did not complete within {timeout} seconds") from e
             time.sleep(sleep)  # small sleep to prevent tight loop
@@ -82,6 +81,7 @@ def create_index_on_collection(collection_name, sync=False):
     def maybe_wait_sync(task):
         return maybe_wait(task, sync)
     if collection_name.endswith('vertex_collection'):
+        print("creating indexes for objects on", collection_name)
         maybe_wait_sync(collection.add_index(dict(type='persistent', fields=['type', '_record_modified'], name='objects_filter_type', inBackground=True, storedValues=['id'])))
         maybe_wait_sync(collection.add_index(dict(type='persistent', fields=['_record_modified'], name='objects_filter', inBackground=True, storedValues=['id'])))
     else:
@@ -106,9 +106,7 @@ def get_db():
 
 def setup_joined_view(sync=True):
     joined_view = settings.JOINED_VIEW_NAME
-    db = get_db()
-    if not sync:
-        db = db.begin_async_execution()
+    db = get_db().begin_async_execution()
     try:
         if sync:
             view = db.view(joined_view)
